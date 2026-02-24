@@ -37,6 +37,24 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: "Internal server error" });
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`RPG Tasks → http://localhost:${PORT}`);
 });
+
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    console.error(
+      `\nError: el puerto ${PORT} ya está en uso.\n` +
+      `Cierra el proceso anterior o usa: PORT=3001 npm start\n`
+    );
+    process.exit(1);
+  }
+  throw err;
+});
+
+function shutdown() {
+  server.close(() => process.exit(0));
+}
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
