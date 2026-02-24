@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RPG Tasks</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <h1>RPG TASKS</h1>
+
+  <canvas id="avatar-canvas" width="180" height="180"></canvas>
+
+  <div id="level-display">Nivel <span id="level-value" class="lv">1</span></div>
+  <div id="exp-display">EXP: <span id="exp-value">0</span> / <span id="exp-next">1</span></div>
+
+  <button id="simulate-btn">Simular tarea completada (3 SP)</button>
+  <button id="reset-btn">Reset personaje</button>
+
+  <div id="status"></div>
+
+  <p class="log-header">HISTORIAL DE RECOMPENSAS</p>
+  <ul id="log-list"></ul>
+
+  <script type="module">
+    import { drawAvatar } from "./avatar.js";
+    import { getUser, completeTask, getLog, devReset } from "./api.js";
+
+    const canvas    = document.getElementById("avatar-canvas");
+    const levelEl   = document.getElementById("level-value");
+    const expEl     = document.getElementById("exp-value");
+    const expNextEl = document.getElementById("exp-next");
+    const btn       = document.getElementById("simulate-btn");
+    const resetBtn  = document.getElementById("reset-btn");
+    const statusEl  = document.getElementById("status");
+    const logList   = document.getElementById("log-list");
+
+    // Fibonacci cost — mirrors server/domain/User.js#levelUpCost
+    function levelUpCost(level) {
+      if (level <= 1) return 1;
+      if (level === 2) return 2;
+      let a = 1, b = 2;
+      for (let i = 3; i <= level; i++) [a, b] = [b, a + b];
+      return b;
+    }
+
+    function setStatus(msg, type = "") {
+      statusEl.textContent = msg;
+      statusEl.className = type;
+    }
+
+    function renderLogEntry(entry) {
+      const li = document.createElement("li");
+      const time = new Date(entry.created_at).toLocaleTimeString();
+      li.innerHTML =
+        `<span class="entry-msg">${entry.message}</span>` +
+        `<span class="entry-time">${time}</span>`;
+      return li;
+    }
+
+    async function refreshUI() {
+      const [user, logs] = await Promise.all([getUser(), getLog(10)]);
+      levelEl.textContent = user.level;
+      expEl.textContent   = user.exp;
+      expNextEl.textContent = levelUpCost(user.level);
+      drawAvatar(canvas, user.level);
+      logList.innerHTML = "";
+      logs.forEach(e => logList.appendChild(renderLogEntry(e)));
+    }
+
+    btn.addEventListener("click", async () => {
+      const taskId = "TASK-" + Date.now();
+      btn.disabled = true;
+      setStatus("Procesando...");
+
+      try {
+        const result = await completeTask(taskId, 3);
+        if (result.rewarded) {
+          if (result.levelsGained > 0) {
+            setStatus(
+              `+${result.levelsGained} nivel(es)! Ahora nivel ${result.newLevel}.`,
+              "success"
+            );
+          } else {
+            setStatus(
+              `EXP ganada. Nivel ${result.newLevel} (${result.newExp} EXP acumulada).`,
+              "success"
+            );
+          }
+          await refreshUI();
+        } else {
+          setStatus(`No recompensado: ${result.reason}`, "error");
+        }
+      } catch {
+        setStatus("Error de servidor. Inténtalo de nuevo.", "error");
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    resetBtn.addEventListener("click", async () => {
+      resetBtn.disabled = true;
+      try {
+        await devReset();
+        setStatus("Personaje reseteado", "success");
+        await refreshUI();
+      } catch {
+        setStatus("Error al resetear.", "error");
+      } finally {
+        resetBtn.disabled = false;
+      }
+    });
+
+    // Initial render
+    refreshUI().catch(() => setStatus("No se pudo cargar el estado del usuario.", "error"));
+  </script>
+</body>
+</html>

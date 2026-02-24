@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# Database (including SQLite WAL journal files)
+rpg-tasks.sqlite
+rpg-tasks.sqlite-shm
+rpg-tasks.sqlite-wal
+
+# Claude Code local config
+.claude/
+
+# Environment
+.env
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
