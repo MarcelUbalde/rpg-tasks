@@ -10,6 +10,7 @@
   <h1>RPG TASKS</h1>
 
   <canvas id="avatar-canvas" width="180" height="180"></canvas>
+  <div id="avatar-user-select"><label for="active-user-select">Avatar:</label> <select id="active-user-select"></select></div>
 
   <div id="level-display">Nivel <span id="level-value" class="lv">1</span></div>
   <div id="exp-display">EXP: <span id="exp-value">0</span> / <span id="exp-next">1</span></div>
@@ -25,9 +26,25 @@
   <p class="log-header">HISTORIAL DE RECOMPENSAS</p>
   <ul id="log-list"></ul>
 
+  <p class="log-header">USUARIOS</p>
+  <ul id="users-list"></ul>
+  <button id="new-task-btn">New TASK (3 SP) → u1 + u2</button>
+  <button id="repeat-task-btn">Repeat last TASK → u1 + u2</button>
+  <button id="new-bug-btn">New BUG High → u1 + u2</button>
+  <button id="repeat-bug-btn">Repeat last BUG → u1 + u2</button>
+  <button id="reset-multi-btn">Reset u1+u2 (dev)</button>
+
+  <p class="log-header">HISTORIAL (<span id="history-user-label">—</span>)</p>
+  <ul id="history-list"></ul>
+
   <script type="module">
     import { drawAvatar } from "./avatar.js";
-    import { getUser, completeTask, getLog, devReset, addGold } from "./api.js";
+    import { completeTask, getLog, devReset, addGold, getUsers, awardTask, awardBug, resetMulti, getUserRewards } from "./api.js";
+
+    let taskSeq = 0;
+    let bugSeq = 0;
+    let lastTaskKey = null;
+    let lastBugKey = null;
 
     const canvas    = document.getElementById("avatar-canvas");
     const levelEl   = document.getElementById("level-value");
@@ -40,6 +57,15 @@
     const goldEl      = document.getElementById("gold-value");
     const statusEl    = document.getElementById("status");
     const logList     = document.getElementById("log-list");
+    const activeUserSelect = document.getElementById("active-user-select");
+    const usersListEl      = document.getElementById("users-list");
+    const resetMultiBtn    = document.getElementById("reset-multi-btn");
+    const historyUserLabel = document.getElementById("history-user-label");
+    const historyList      = document.getElementById("history-list");
+    const newTaskBtn    = document.getElementById("new-task-btn");
+    const repeatTaskBtn = document.getElementById("repeat-task-btn");
+    const newBugBtn     = document.getElementById("new-bug-btn");
+    const repeatBugBtn  = document.getElementById("repeat-bug-btn");
 
     // Fibonacci cost — mirrors server/domain/User.js#levelUpCost
     function levelUpCost(level) {
@@ -65,7 +91,21 @@
     }
 
     async function refreshUI() {
-      const [user, logs] = await Promise.all([getUser(), getLog(10)]);
+      const [users, logs] = await Promise.all([getUsers(), getLog(10)]);
+      // Repopulate selector, preserving current selection (default: "local")
+      const currentVal = activeUserSelect.value || "local";
+      activeUserSelect.innerHTML = "";
+      users.forEach((u) => {
+        const opt = document.createElement("option");
+        opt.value = u.id;
+        opt.textContent = u.id;
+        activeUserSelect.appendChild(opt);
+      });
+      activeUserSelect.value = users.some((u) => u.id === currentVal) ? currentVal : "local";
+      // Find active user, fallback to local
+      const user = users.find((u) => u.id === activeUserSelect.value)
+                ?? users.find((u) => u.id === "local")
+                ?? users[0];
       levelEl.textContent   = user.level;
       expEl.textContent     = user.exp;
       expNextEl.textContent = levelUpCost(user.level);
@@ -131,8 +171,115 @@
       }
     });
 
+    async function refreshHistory() {
+      const selectedId = activeUserSelect.value;
+      if (!selectedId) return;
+      const { userId, items } = await getUserRewards(selectedId, 20);
+      historyUserLabel.textContent = userId;
+      historyList.innerHTML = "";
+      items.forEach((item) => {
+        const li = document.createElement("li");
+        const time = new Date(item.createdAt).toLocaleTimeString();
+        const reward = item.expAwarded > 0 ? `+${item.expAwarded} EXP` : `+${item.goldAwarded} Gold`;
+        const payloadStr = item.payload
+          ? ` (${Object.entries(item.payload).map(([k, v]) => `${k}:${v}`).join(", ")})`
+          : "";
+        li.textContent = `${time} ${item.type} ${item.key}  ${reward}${payloadStr}`;
+        historyList.appendChild(li);
+      });
+    }
+
+    function renderUserEntry(u) {
+      const li = document.createElement("li");
+      li.textContent = `${u.id}  Lv${u.level}  EXP:${u.exp}  Gold:${u.gold}`;
+      return li;
+    }
+
+    async function refreshUsers() {
+      const users = await getUsers();
+      usersListEl.innerHTML = "";
+      users.forEach((u) => usersListEl.appendChild(renderUserEntry(u)));
+    }
+
+    activeUserSelect.addEventListener("change", () => {
+      refreshUI().catch(() => {});
+      refreshHistory().catch(() => {});
+    });
+
+    async function doAwardTask(key) {
+      try {
+        const result = await awardTask(key, 3, ["u1", "u2"]);
+        const allDup = result.results.every((r) => !r.rewarded && r.reason === "duplicate");
+        setStatus(
+          allDup ? `Ya recompensado — sin cambios (${key})` : `Recompensa aplicada (${key})`,
+          allDup ? "" : "success"
+        );
+        await Promise.all([refreshUsers(), refreshUI(), refreshHistory()]);
+      } catch {
+        setStatus("Error al simular TASK.", "error");
+      }
+    }
+
+    async function doAwardBug(key) {
+      try {
+        const result = await awardBug(key, "High", ["u1", "u2"]);
+        const allDup = result.results.every((r) => !r.rewarded && r.reason === "duplicate");
+        setStatus(
+          allDup ? `Ya recompensado — sin cambios (${key})` : `Recompensa aplicada (${key}) (+3 gold each)`,
+          allDup ? "" : "success"
+        );
+        await Promise.all([refreshUsers(), refreshUI(), refreshHistory()]);
+      } catch {
+        setStatus("Error al simular BUG.", "error");
+      }
+    }
+
+    newTaskBtn.addEventListener("click", async () => {
+      newTaskBtn.disabled = true;
+      lastTaskKey = `HU-DEMO-${++taskSeq}`;
+      await doAwardTask(lastTaskKey);
+      newTaskBtn.disabled = false;
+    });
+
+    repeatTaskBtn.addEventListener("click", async () => {
+      if (!lastTaskKey) { setStatus("Primero genera un TASK nuevo.", "error"); return; }
+      repeatTaskBtn.disabled = true;
+      await doAwardTask(lastTaskKey);
+      repeatTaskBtn.disabled = false;
+    });
+
+    newBugBtn.addEventListener("click", async () => {
+      newBugBtn.disabled = true;
+      lastBugKey = `BUG-DEMO-${++bugSeq}`;
+      await doAwardBug(lastBugKey);
+      newBugBtn.disabled = false;
+    });
+
+    repeatBugBtn.addEventListener("click", async () => {
+      if (!lastBugKey) { setStatus("Primero genera un BUG nuevo.", "error"); return; }
+      repeatBugBtn.disabled = true;
+      await doAwardBug(lastBugKey);
+      repeatBugBtn.disabled = false;
+    });
+
+    resetMultiBtn.addEventListener("click", async () => {
+      resetMultiBtn.disabled = true;
+      try {
+        await resetMulti();
+        setStatus("u1 y u2 reseteados a L1", "success");
+        await Promise.all([refreshUsers(), refreshUI(), refreshHistory()]);
+      } catch {
+        setStatus("Error al resetear u1+u2.", "error");
+      } finally {
+        resetMultiBtn.disabled = false;
+      }
+    });
+
     // Initial render
-    refreshUI().catch(() => setStatus("No se pudo cargar el estado del usuario.", "error"));
+    refreshUI()
+      .then(() => refreshHistory())
+      .catch(() => setStatus("No se pudo cargar el estado del usuario.", "error"));
+    refreshUsers().catch(() => {});
   </script>
 </body>
 </html>

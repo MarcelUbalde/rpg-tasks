@@ -11,6 +11,8 @@ import "./infrastructure/db.js";
 import { userRouter } from "./routes/user.js";
 import { tasksRouter } from "./routes/tasks.js";
 import { logRouter } from "./routes/log.js";
+import { usersRouter } from "./routes/users.js";
+import { userRewardsRouter } from "./routes/userRewards.js";
 import { devRouter } from "./routes/dev.js";
 
 // __dirname is not available in ES modules — reconstruct from import.meta.url
@@ -24,6 +26,8 @@ app.use(express.json());
 app.use(express.static(join(__dirname, "../public")));
 
 app.use("/api/user", userRouter);
+app.use("/api/users", usersRouter);
+app.use("/api/users", userRewardsRouter);
 app.use("/api/tasks", tasksRouter);
 app.use("/api/log", logRouter);
 

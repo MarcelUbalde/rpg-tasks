@@ -43,6 +43,9 @@ export function getEvolutionStage(level) {
 
 // Returns updated user with gold incremented and updated_at refreshed. No side effects.
 export function applyGoldGain(user, amount) {
+  if (!Number.isInteger(amount) || amount <= 0) {
+    throw new Error("amount must be a positive integer");
+  }
   return { ...user, gold: user.gold + amount, updated_at: new Date().toISOString() };
 }
 

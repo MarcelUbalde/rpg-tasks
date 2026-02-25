@@ -40,3 +40,41 @@ export async function addGold(amount) {
   if (!res.ok) throw new Error(`addGold failed: ${res.status}`);
   return res.json();
 }
+
+export async function getUsers() {
+  const res = await fetch(`${BASE}/users`);
+  if (!res.ok) throw new Error(`getUsers failed: ${res.status}`);
+  return res.json();
+}
+
+export async function awardTask(taskId, storyPoints, userIds) {
+  const res = await fetch(`${BASE}/dev/award-task`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ taskId, storyPoints, userIds }),
+  });
+  if (!res.ok) throw new Error(`awardTask failed: ${res.status}`);
+  return res.json();
+}
+
+export async function awardBug(jiraKey, severity, userIds) {
+  const res = await fetch(`${BASE}/dev/award-bug`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jiraKey, severity, userIds }),
+  });
+  if (!res.ok) throw new Error(`awardBug failed: ${res.status}`);
+  return res.json();
+}
+
+export async function resetMulti() {
+  const res = await fetch(`${BASE}/dev/reset-multi`, { method: "POST" });
+  if (!res.ok) throw new Error(`resetMulti failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getUserRewards(userId, limit = 20) {
+  const res = await fetch(`${BASE}/users/${encodeURIComponent(userId)}/rewards?limit=${limit}`);
+  if (!res.ok) throw new Error(`getUserRewards failed: ${res.status}`);
+  return res.json();
+}
