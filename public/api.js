@@ -30,3 +30,13 @@ export async function devReset() {
   if (!res.ok) throw new Error(`devReset failed: ${res.status}`);
   return res.json();
 }
+
+export async function addGold(amount) {
+  const res = await fetch(`${BASE}/dev/add-gold`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ amount }),
+  });
+  if (!res.ok) throw new Error(`addGold failed: ${res.status}`);
+  return res.json();
+}

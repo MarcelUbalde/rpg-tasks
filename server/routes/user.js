@@ -2,6 +2,7 @@
 
 import { Router } from "express";
 import { userRepository } from "../infrastructure/repositories/userRepository.js";
+import { getEvolutionStage } from "../domain/User.js";
 
 export const userRouter = Router();
 
@@ -10,5 +11,11 @@ userRouter.get("/", (_req, res) => {
   if (!user) {
     return res.status(404).json({ error: "User not found" });
   }
-  res.json({ id: user.id, level: user.level, exp: user.exp, gold: user.gold });
+  res.json({
+    id: user.id,
+    level: user.level,
+    exp: user.exp,
+    gold: user.gold,
+    evolutionStage: getEvolutionStage(user.level),
+  });
 });

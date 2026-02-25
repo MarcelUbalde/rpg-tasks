@@ -51,7 +51,23 @@ h1 {
   text-align: center;
   font-size: 0.8rem;
   color: var(--muted);
+  margin-bottom: 0.2rem;
+}
+
+#stage-display {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-bottom: 0.2rem;
+  letter-spacing: 0.05em;
+}
+
+#gold-display {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--accent);
   margin-bottom: 1.5rem;
+  letter-spacing: 0.05em;
 }
 
 #simulate-btn {
@@ -85,6 +101,21 @@ h1 {
 
 #reset-btn:hover { color: var(--danger); border-color: var(--danger); }
 #reset-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+#add-gold-btn {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  padding: 0.35rem 1rem;
+  font-family: inherit;
+  font-size: 0.8rem;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-bottom: 1rem;
+}
+
+#add-gold-btn:hover { color: var(--accent); border-color: var(--accent); }
+#add-gold-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 #status {
   min-height: 1.4rem;

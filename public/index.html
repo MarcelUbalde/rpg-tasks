@@ -13,9 +13,12 @@
 
   <div id="level-display">Nivel <span id="level-value" class="lv">1</span></div>
   <div id="exp-display">EXP: <span id="exp-value">0</span> / <span id="exp-next">1</span></div>
+  <div id="stage-display">Etapa: <span id="stage-value">0</span></div>
+  <div id="gold-display">Gold: <span id="gold-value">0</span></div>
 
   <button id="simulate-btn">Simular tarea completada (3 SP)</button>
   <button id="reset-btn">Reset personaje</button>
+  <button id="add-gold-btn">Add 1 Gold (dev)</button>
 
   <div id="status"></div>
 
@@ -24,16 +27,19 @@
 
   <script type="module">
     import { drawAvatar } from "./avatar.js";
-    import { getUser, completeTask, getLog, devReset } from "./api.js";
+    import { getUser, completeTask, getLog, devReset, addGold } from "./api.js";
 
     const canvas    = document.getElementById("avatar-canvas");
     const levelEl   = document.getElementById("level-value");
     const expEl     = document.getElementById("exp-value");
     const expNextEl = document.getElementById("exp-next");
-    const btn       = document.getElementById("simulate-btn");
-    const resetBtn  = document.getElementById("reset-btn");
-    const statusEl  = document.getElementById("status");
-    const logList   = document.getElementById("log-list");
+    const stageEl   = document.getElementById("stage-value");
+    const btn         = document.getElementById("simulate-btn");
+    const resetBtn    = document.getElementById("reset-btn");
+    const addGoldBtn  = document.getElementById("add-gold-btn");
+    const goldEl      = document.getElementById("gold-value");
+    const statusEl    = document.getElementById("status");
+    const logList     = document.getElementById("log-list");
 
     // Fibonacci cost — mirrors server/domain/User.js#levelUpCost
     function levelUpCost(level) {
@@ -60,9 +66,11 @@
 
     async function refreshUI() {
       const [user, logs] = await Promise.all([getUser(), getLog(10)]);
-      levelEl.textContent = user.level;
-      expEl.textContent   = user.exp;
+      levelEl.textContent   = user.level;
+      expEl.textContent     = user.exp;
       expNextEl.textContent = levelUpCost(user.level);
+      stageEl.textContent   = user.evolutionStage;
+      goldEl.textContent    = user.gold;
       drawAvatar(canvas, user.level);
       logList.innerHTML = "";
       logs.forEach(e => logList.appendChild(renderLogEntry(e)));
@@ -108,6 +116,18 @@
         setStatus("Error al resetear.", "error");
       } finally {
         resetBtn.disabled = false;
+      }
+    });
+
+    addGoldBtn.addEventListener("click", async () => {
+      addGoldBtn.disabled = true;
+      try {
+        await addGold(1);
+        await refreshUI();
+      } catch {
+        setStatus("Error al añadir gold.", "error");
+      } finally {
+        addGoldBtn.disabled = false;
       }
     });
 

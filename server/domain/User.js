@@ -35,6 +35,17 @@ export function applyExpGain(user, expGained) {
   return { updatedUser, levelsGained };
 }
 
+// Returns evolution stage (0–5) based on level.
+// Stage 0: L1–2, Stage 1: L3–4, ..., Stage 5: L11+
+export function getEvolutionStage(level) {
+  return Math.min(5, Math.floor((level - 1) / 2));
+}
+
+// Returns updated user with gold incremented and updated_at refreshed. No side effects.
+export function applyGoldGain(user, amount) {
+  return { ...user, gold: user.gold + amount, updated_at: new Date().toISOString() };
+}
+
 // Returns a color key based on level thresholds.
 // level 1=gray, 2-3=green, 4-5=blue, 6-7=purple, 8+=gold
 export function getAvatarColor(level) {
