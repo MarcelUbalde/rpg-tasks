@@ -46,6 +46,11 @@
     <button id="repeat-bug-btn">Repeat last BUG</button>
     <button id="create-bug-event-btn">Create BUG event</button>
     <button id="apply-bug-event-btn">Apply last BUG event</button>
+    <br>
+    <label>Jira issue: <input type="text" id="jira-issue-key-input" placeholder="HU-123" style="width:7em"></label>
+    <label>Done id: <input type="number" id="done-event-id-input" min="1" style="width:4em"></label>
+    <button id="simulate-jira-done-btn">Simulate Jira Done</button>
+    <button id="retry-jira-done-btn">Retry same Done</button>
     <hr>
     <button id="reset-multi-btn">Reset u1+u2 (dev)</button>
   </div>
@@ -55,7 +60,7 @@
 
   <script type="module">
     import { drawAvatar } from "./avatar.js";
-    import { completeTask, getLog, devReset, addGold, getUsers, awardTask, awardBug, resetMulti, getUserRewards, createTaskEvent, createBugEvent, applyEvent } from "./api.js";
+    import { completeTask, getLog, devReset, addGold, getUsers, awardTask, awardBug, resetMulti, getUserRewards, createTaskEvent, createBugEvent, applyEvent, simulateJiraDone } from "./api.js";
 
     let taskSeq = 0;
     let bugSeq = 0;
@@ -63,6 +68,7 @@
     let lastBugKey = null;
     let lastTaskEventId = null;
     let lastBugEventId  = null;
+    let doneCounter = 1;
 
     const canvas    = document.getElementById("avatar-canvas");
     const levelEl   = document.getElementById("level-value");
@@ -93,6 +99,10 @@
     const applyTaskEventBtn    = document.getElementById("apply-task-event-btn");
     const createBugEventBtn    = document.getElementById("create-bug-event-btn");
     const applyBugEventBtn     = document.getElementById("apply-bug-event-btn");
+    const jiraIssueKeyInput    = document.getElementById("jira-issue-key-input");
+    const doneEventIdInput     = document.getElementById("done-event-id-input");
+    const simulateJiraDoneBtn  = document.getElementById("simulate-jira-done-btn");
+    const retryJiraDoneBtn     = document.getElementById("retry-jira-done-btn");
 
     // Fibonacci cost — mirrors server/domain/User.js#levelUpCost
     function levelUpCost(level) {
@@ -445,6 +455,45 @@
         setStatus("Error al resetear u1+u2.", "error");
       } finally {
         resetMultiBtn.disabled = false;
+      }
+    });
+
+    simulateJiraDoneBtn.addEventListener("click", async () => {
+      const userIds = getSelectedUserIds();
+      if (!ensureNonEmptySelection(userIds)) return;
+      const issueKey = jiraIssueKeyInput.value.trim() || "HU-DEMO";
+      doneEventIdInput.value = doneCounter++;
+      const doneEventId = Number(doneEventIdInput.value);
+      const storyPoints = Math.max(1, Number(spInput.value) || 3);
+      simulateJiraDoneBtn.disabled = true;
+      try {
+        const result = await simulateJiraDone(issueKey, storyPoints, doneEventId, userIds);
+        renderResultStatus(`${result.event.type} ${result.event.key}`, result.results, formatTaskResult);
+        await Promise.all([refreshUsers(), refreshUI(), refreshHistory()]);
+      } catch (err) {
+        if (err.conflict) { showConflict(err.conflict); }
+        else { setStatus("Error al simular Jira Done.", "error"); }
+      } finally {
+        simulateJiraDoneBtn.disabled = false;
+      }
+    });
+
+    retryJiraDoneBtn.addEventListener("click", async () => {
+      const userIds = getSelectedUserIds();
+      if (!ensureNonEmptySelection(userIds)) return;
+      const issueKey = jiraIssueKeyInput.value.trim() || "HU-DEMO";
+      const doneEventId = Number(doneEventIdInput.value) || 1;
+      const storyPoints = Math.max(1, Number(spInput.value) || 3);
+      retryJiraDoneBtn.disabled = true;
+      try {
+        const result = await simulateJiraDone(issueKey, storyPoints, doneEventId, userIds);
+        renderResultStatus(`${result.event.type} ${result.event.key}`, result.results, formatTaskResult);
+        await Promise.all([refreshUsers(), refreshUI(), refreshHistory()]);
+      } catch (err) {
+        if (err.conflict) { showConflict(err.conflict); }
+        else { setStatus("Error al reintentar Jira Done.", "error"); }
+      } finally {
+        retryJiraDoneBtn.disabled = false;
       }
     });
 

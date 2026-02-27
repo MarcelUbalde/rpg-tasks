@@ -136,6 +136,52 @@ describe("awardTaskExpToUsers", () => {
       .get(event.id, "u1");
     expect(count.cnt).toBe(1);
   });
+
+  it("Jira Done: different doneEventId → two distinct reward events, user rewarded twice", () => {
+    awardTaskExpToUsers({ taskId: "HU-20-done-1", storyPoints: 2, userIds: ["u1"] }, deps);
+    awardTaskExpToUsers({ taskId: "HU-20-done-2", storyPoints: 2, userIds: ["u1"] }, deps);
+
+    const evtCount = deps.db
+      .prepare("SELECT COUNT(*) cnt FROM reward_events WHERE type = 'TASK' AND external_key LIKE 'HU-20-done-%'")
+      .get();
+    expect(evtCount.cnt).toBe(2);
+
+    const reuCount = deps.db
+      .prepare(`
+        SELECT COUNT(*) cnt
+        FROM reward_event_users reu
+        JOIN reward_events re ON re.id = reu.event_id
+        WHERE reu.user_id = ?
+          AND re.type = 'TASK'
+          AND re.external_key IN ('HU-20-done-1', 'HU-20-done-2')
+      `)
+      .get("u1");
+    expect(reuCount.cnt).toBe(2);
+  });
+
+  it("Jira Done: same doneEventId → idempotent, user state unchanged on second call", () => {
+    awardTaskExpToUsers({ taskId: "HU-20-done-1", storyPoints: 2, userIds: ["u1"] }, deps);
+    const s1 = deps.db.prepare("SELECT level, exp FROM users WHERE id = ?").get("u1");
+
+    awardTaskExpToUsers({ taskId: "HU-20-done-1", storyPoints: 2, userIds: ["u1"] }, deps);
+    const s2 = deps.db.prepare("SELECT level, exp FROM users WHERE id = ?").get("u1");
+
+    const evtCount = deps.db
+      .prepare("SELECT COUNT(*) cnt FROM reward_events WHERE type = 'TASK' AND external_key = 'HU-20-done-1'")
+      .get();
+    expect(evtCount.cnt).toBe(1);
+
+    const event = deps.db
+      .prepare("SELECT id FROM reward_events WHERE type = ? AND external_key = ?")
+      .get("TASK", "HU-20-done-1");
+    const reuCount = deps.db
+      .prepare("SELECT COUNT(*) cnt FROM reward_event_users WHERE event_id = ? AND user_id = ?")
+      .get(event.id, "u1");
+    expect(reuCount.cnt).toBe(1);
+
+    expect(s2.level).toBe(s1.level);
+    expect(s2.exp).toBe(s1.exp);
+  });
 });
 
 describe("awardBugGoldToUsers", () => {

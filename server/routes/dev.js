@@ -107,6 +107,44 @@ devRouter.post("/award-bug", (req, res) => {
   }
 });
 
+devRouter.post("/jira/task-done", (req, res) => {
+  if (process.env.NODE_ENV === "production") {
+    return res.status(403).json({ error: "Dev endpoint disabled in production" });
+  }
+  const { issueKey, storyPoints, doneEventId, userIds } = req.body;
+  if (typeof issueKey !== "string" || !issueKey || !Number.isInteger(doneEventId) || doneEventId <= 0) {
+    return res.status(400).json({ error: "issueKey must be a non-empty string and doneEventId must be a positive integer" });
+  }
+  if (!Number.isInteger(storyPoints) || storyPoints <= 0) {
+    return res.status(400).json({ error: "storyPoints must be a positive integer" });
+  }
+  if (!Array.isArray(userIds) || userIds.length === 0) {
+    return res.status(400).json({ error: "userIds must be a non-empty array" });
+  }
+  try {
+    const externalKey = `${issueKey}-done-${doneEventId}`;
+    res.json(awardTaskExpToUsers({ taskId: externalKey, storyPoints, userIds }, awardDeps));
+  } catch (err) {
+    if (err.code === "payload_mismatch") {
+      return res.status(409).json({
+        error: "payload_mismatch",
+        type: err.type,
+        key: err.externalKey,
+        stored: err.storedPayload,
+        requested: err.requestedPayload,
+      });
+    }
+    if (err.code === "invariant_violation") {
+      return res.status(500).json({
+        error: "invariant_violation",
+        type: err.type,
+        key: err.externalKey,
+      });
+    }
+    res.status(400).json({ error: err.message });
+  }
+});
+
 devRouter.post("/create-task-event", (req, res) => {
   if (process.env.NODE_ENV === "production") {
     return res.status(403).json({ error: "Dev endpoint disabled in production" });

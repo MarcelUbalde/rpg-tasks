@@ -79,6 +79,22 @@ export async function awardBug(jiraKey, severity, userIds) {
   return res.json();
 }
 
+export async function simulateJiraDone(issueKey, storyPoints, doneEventId, userIds) {
+  const res = await fetch(`${BASE}/dev/jira/task-done`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ issueKey, storyPoints, doneEventId, userIds }),
+  });
+  if (res.status === 409) {
+    const data = await res.json();
+    const err = new Error("payload_mismatch");
+    err.conflict = data;
+    throw err;
+  }
+  if (!res.ok) throw new Error(`simulateJiraDone failed: ${res.status}`);
+  return res.json();
+}
+
 export async function resetMulti() {
   const res = await fetch(`${BASE}/dev/reset-multi`, { method: "POST" });
   if (!res.ok) throw new Error(`resetMulti failed: ${res.status}`);
