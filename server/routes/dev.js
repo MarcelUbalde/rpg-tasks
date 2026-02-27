@@ -50,6 +50,22 @@ devRouter.post("/award-task", (req, res) => {
   try {
     res.json(awardTaskExpToUsers({ taskId, storyPoints, userIds }, awardDeps));
   } catch (err) {
+    if (err.code === "payload_mismatch") {
+      return res.status(409).json({
+        error: "payload_mismatch",
+        type: err.type,
+        key: err.externalKey,
+        stored: err.storedPayload,
+        requested: err.requestedPayload,
+      });
+    }
+    if (err.code === "invariant_violation") {
+      return res.status(500).json({
+        error: "invariant_violation",
+        type: err.type,
+        key: err.externalKey,
+      });
+    }
     res.status(400).json({ error: err.message });
   }
 });
@@ -71,6 +87,22 @@ devRouter.post("/award-bug", (req, res) => {
   try {
     res.json(awardBugGoldToUsers({ jiraKey, severity, userIds }, awardDeps));
   } catch (err) {
+    if (err.code === "payload_mismatch") {
+      return res.status(409).json({
+        error: "payload_mismatch",
+        type: err.type,
+        key: err.externalKey,
+        stored: err.storedPayload,
+        requested: err.requestedPayload,
+      });
+    }
+    if (err.code === "invariant_violation") {
+      return res.status(500).json({
+        error: "invariant_violation",
+        type: err.type,
+        key: err.externalKey,
+      });
+    }
     res.status(400).json({ error: err.message });
   }
 });

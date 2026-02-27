@@ -53,6 +53,12 @@ export async function awardTask(taskId, storyPoints, userIds) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ taskId, storyPoints, userIds }),
   });
+  if (res.status === 409) {
+    const data = await res.json();
+    const err = new Error("payload_mismatch");
+    err.conflict = data;
+    throw err;
+  }
   if (!res.ok) throw new Error(`awardTask failed: ${res.status}`);
   return res.json();
 }
@@ -63,6 +69,12 @@ export async function awardBug(jiraKey, severity, userIds) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ jiraKey, severity, userIds }),
   });
+  if (res.status === 409) {
+    const data = await res.json();
+    const err = new Error("payload_mismatch");
+    err.conflict = data;
+    throw err;
+  }
   if (!res.ok) throw new Error(`awardBug failed: ${res.status}`);
   return res.json();
 }

@@ -1,6 +1,17 @@
 // server/infrastructure/repositories/rewardEventRepository.factory.js
 // No db import — safe to use in tests with any DatabaseSync instance.
 
+// Private: compares expected payload against stored JSON, key-order-independently. CC=2.
+function parseAndCompare(expected, storedPayloadJson) {
+  const sort = (obj) => JSON.stringify(Object.fromEntries(Object.entries(obj).sort()));
+  try {
+    const stored = JSON.parse(storedPayloadJson);
+    return { matches: sort(expected) === sort(stored), stored };
+  } catch {
+    return { matches: false, stored: null };
+  }
+}
+
 export function makeRewardEventRepository(db) {
   const insertIgnoreStmt = db.prepare(
     `INSERT OR IGNORE INTO reward_events (type, external_key, payload_json, created_at)
@@ -36,7 +47,34 @@ export function makeRewardEventRepository(db) {
     findById(eventId) {
       return findByIdStmt.get({ id: eventId }) ?? null;
     },
-    // Mutable on purpose: ON CONFLICT DO UPDATE — overwrites payload_json so SP/severity reflect current input (Award dev/QA flow).
+    // Strict create: create if new; return row if payload matches; throw payload_mismatch if different. CC=3.
+    assertSameOrCreate({ type, externalKey, payload }) {
+      insertIgnoreStmt.run({
+        type, externalKey,
+        payloadJson: JSON.stringify(payload),
+        createdAt: new Date().toISOString(),
+      });
+      const row = findStmt.get({ type, externalKey });
+      if (!row) {
+        const e = new Error(`invariant violated: reward event not found after insert (type=${type}, key=${externalKey})`);
+        e.code = "invariant_violation";
+        e.type = type;
+        e.externalKey = externalKey;
+        throw e;
+      }
+      const { matches, stored } = parseAndCompare(payload, row.payload_json);
+      if (!matches) {
+        const err = new Error("payload_mismatch");
+        err.code = "payload_mismatch";
+        err.type = type;
+        err.externalKey = externalKey;
+        err.storedPayload = stored;
+        err.requestedPayload = payload;
+        throw err;
+      }
+      return row;
+    },
+    // Deprecated: no longer used in the Award flow — events are immutable after creation. Retained for reference.
     upsertEvent({ type, externalKey, payload }) {
       upsertStmt.run({
         type,

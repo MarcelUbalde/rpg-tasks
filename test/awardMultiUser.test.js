@@ -103,13 +103,38 @@ describe("awardTaskExpToUsers", () => {
     expect(row).toBeUndefined();
   });
 
-  it("same key, different SP on second call → second user gets updated SP", () => {
-    // u1 gets rewarded with SP=1 on first call
+  it("same key, different SP on second call → throws payload_mismatch", () => {
     awardTaskExpToUsers({ taskId: "HU-5", storyPoints: 1, userIds: ["u1"] }, deps);
-    // u2 calls same key with SP=3 — upsertEvent must overwrite payload, not keep SP=1
-    const r2 = awardTaskExpToUsers({ taskId: "HU-5", storyPoints: 3, userIds: ["u2"] }, deps);
-    // 3 EXP from L1: costs 1 (L1→L2) + 2 (L2→L3) → newLevel 3
-    expect(r2.results[0]).toMatchObject({ userId: "u2", rewarded: true, newLevel: 3 });
+    expect(() =>
+      awardTaskExpToUsers({ taskId: "HU-5", storyPoints: 3, userIds: ["u2"] }, deps)
+    ).toThrow("payload_mismatch");
+    // Verify u2 was NOT rewarded
+    const event = deps.db
+      .prepare("SELECT id FROM reward_events WHERE type = ? AND external_key = ?")
+      .get("TASK", "HU-5");
+    const row = deps.db
+      .prepare("SELECT id FROM reward_event_users WHERE event_id = ? AND user_id = ?")
+      .get(event.id, "u2");
+    expect(row).toBeUndefined();
+  });
+
+  it("same key + same payload + same user twice → second call is a no-op", () => {
+    // First award — applies exp; capture resulting state
+    awardTaskExpToUsers({ taskId: "HU-10", storyPoints: 2, userIds: ["u1"] }, deps);
+    const s1 = deps.db.prepare("SELECT level, exp FROM users WHERE id = ?").get("u1");
+    // Second award same key/payload/user — must be a complete no-op
+    awardTaskExpToUsers({ taskId: "HU-10", storyPoints: 2, userIds: ["u1"] }, deps);
+    const s2 = deps.db.prepare("SELECT level, exp FROM users WHERE id = ?").get("u1");
+    expect(s2.level).toBe(s1.level);
+    expect(s2.exp).toBe(s1.exp);
+    // Only one reward_event_users row for (event_id, u1)
+    const event = deps.db
+      .prepare("SELECT id FROM reward_events WHERE type = ? AND external_key = ?")
+      .get("TASK", "HU-10");
+    const count = deps.db
+      .prepare("SELECT COUNT(*) cnt FROM reward_event_users WHERE event_id = ? AND user_id = ?")
+      .get(event.id, "u1");
+    expect(count.cnt).toBe(1);
   });
 });
 
@@ -142,5 +167,12 @@ describe("awardBugGoldToUsers", () => {
     expect(() =>
       awardBugGoldToUsers({ jiraKey: "BUG-X", severity: "Legendary", userIds: ["u1"] }, deps)
     ).toThrow();
+  });
+
+  it("same key + different severity → throws payload_mismatch", () => {
+    awardBugGoldToUsers({ jiraKey: "BUG-P1", severity: "High", userIds: ["u1"] }, deps);
+    expect(() =>
+      awardBugGoldToUsers({ jiraKey: "BUG-P1", severity: "Critical", userIds: ["u2"] }, deps)
+    ).toThrow("payload_mismatch");
   });
 });

@@ -108,6 +108,15 @@
       statusEl.className = type;
     }
 
+    function showConflict(c) {
+      const storedStr = JSON.stringify(c.stored);
+      const requestedStr = JSON.stringify(c.requested);
+      setStatus(
+        `Conflicto: key "${c.key}" ya existe con payload distinto. Stored: ${storedStr} | Requested: ${requestedStr}`,
+        "error"
+      );
+    }
+
     function renderLogEntry(entry) {
       const li = document.createElement("li");
       const time = new Date(entry.created_at).toLocaleTimeString();
@@ -310,7 +319,8 @@
         lastTaskEventId = result.event.id;
         renderResultStatus(`${result.event.type} ${result.event.key}`, result.results, formatTaskResult);
         await Promise.all([refreshUsers(), refreshUI(), refreshHistory()]);
-      } catch {
+      } catch (err) {
+        if (err.conflict) { showConflict(err.conflict); return; }
         setStatus("Error al simular TASK.", "error");
       }
     }
@@ -321,7 +331,8 @@
         lastBugEventId = result.event.id;
         renderResultStatus(`${result.event.type} ${result.event.key}`, result.results, formatBugResult);
         await Promise.all([refreshUsers(), refreshUI(), refreshHistory()]);
-      } catch {
+      } catch (err) {
+        if (err.conflict) { showConflict(err.conflict); return; }
         setStatus("Error al simular BUG.", "error");
       }
     }

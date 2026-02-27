@@ -1,5 +1,8 @@
 // server/application/awardTaskExpToUsers.js
-// Award flow: upsert overwrites payload_json so SP always matches current input (dev/QA intent).
+// Award flow: event is immutable — same key + same SP is idempotent; different SP → payload_mismatch.
+// Jira integration note: externalKey (taskId) defines the immutability boundary.
+// A key cannot be re-awarded with a changed storyPoints value.
+// If SP may change (e.g., re-estimation per sprint), version the key: `${taskId}-${sprintId}`.
 
 import { applyRewardEventToUsers } from "./applyRewardEventToUsers.js";
 import { deduplicateUserIds } from "./userIds.js";
@@ -9,7 +12,7 @@ export function awardTaskExpToUsers({ taskId, storyPoints, userIds }, deps) {
     throw new Error("storyPoints must be a positive integer");
   }
   const uniqueIds = deduplicateUserIds(userIds);
-  const raw = deps.rewardEventRepo.upsertEvent({
+  const raw = deps.rewardEventRepo.assertSameOrCreate({
     type: "TASK",
     externalKey: taskId,
     payload: { storyPoints },
