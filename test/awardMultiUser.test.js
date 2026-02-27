@@ -102,6 +102,15 @@ describe("awardTaskExpToUsers", () => {
       .get(event.id, "ghost");
     expect(row).toBeUndefined();
   });
+
+  it("same key, different SP on second call → second user gets updated SP", () => {
+    // u1 gets rewarded with SP=1 on first call
+    awardTaskExpToUsers({ taskId: "HU-5", storyPoints: 1, userIds: ["u1"] }, deps);
+    // u2 calls same key with SP=3 — upsertEvent must overwrite payload, not keep SP=1
+    const r2 = awardTaskExpToUsers({ taskId: "HU-5", storyPoints: 3, userIds: ["u2"] }, deps);
+    // 3 EXP from L1: costs 1 (L1→L2) + 2 (L2→L3) → newLevel 3
+    expect(r2.results[0]).toMatchObject({ userId: "u2", rewarded: true, newLevel: 3 });
+  });
 });
 
 describe("awardBugGoldToUsers", () => {

@@ -78,3 +78,33 @@ export async function getUserRewards(userId, limit = 20) {
   if (!res.ok) throw new Error(`getUserRewards failed: ${res.status}`);
   return res.json();
 }
+
+export async function createTaskEvent(taskId, storyPoints) {
+  const res = await fetch(`${BASE}/dev/create-task-event`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ taskId, storyPoints }),
+  });
+  if (!res.ok) throw new Error(`createTaskEvent failed: ${res.status}`);
+  return res.json();
+}
+
+export async function createBugEvent(jiraKey, severity) {
+  const res = await fetch(`${BASE}/dev/create-bug-event`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jiraKey, severity }),
+  });
+  if (!res.ok) throw new Error(`createBugEvent failed: ${res.status}`);
+  return res.json();
+}
+
+export async function applyEvent(eventId, userIds) {
+  const res = await fetch(`${BASE}/dev/apply-event`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ eventId, userIds }),
+  });
+  if (!res.ok) throw new Error(`applyEvent failed: ${res.status}`);
+  return res.json();
+}

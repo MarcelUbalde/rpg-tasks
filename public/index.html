@@ -28,23 +28,41 @@
 
   <p class="log-header">USUARIOS</p>
   <ul id="users-list"></ul>
-  <button id="new-task-btn">New TASK (3 SP) → u1 + u2</button>
-  <button id="repeat-task-btn">Repeat last TASK → u1 + u2</button>
-  <button id="new-bug-btn">New BUG High → u1 + u2</button>
-  <button id="repeat-bug-btn">Repeat last BUG → u1 + u2</button>
-  <button id="reset-multi-btn">Reset u1+u2 (dev)</button>
+  <div id="award-panel">
+    <div id="user-checkboxes"></div>
+    <label>SP: <input type="number" id="sp-input" value="3" min="1" style="width:4em"></label>
+    <label>Severity: <select id="severity-select">
+      <option>Low</option><option>Medium</option><option selected>High</option><option>Critical</option>
+    </select></label>
+    <br>
+    <label>TASK key: <input type="text" id="task-key-input" placeholder="auto (HU-DEMO-N)"></label>
+    <button id="award-task-btn">Award TASK</button>
+    <button id="repeat-task-btn">Repeat last TASK</button>
+    <button id="create-task-event-btn">Create TASK event</button>
+    <button id="apply-task-event-btn">Apply last TASK event</button>
+    <br>
+    <label>BUG key: <input type="text" id="bug-key-input" placeholder="auto (BUG-DEMO-N)"></label>
+    <button id="award-bug-btn">Award BUG</button>
+    <button id="repeat-bug-btn">Repeat last BUG</button>
+    <button id="create-bug-event-btn">Create BUG event</button>
+    <button id="apply-bug-event-btn">Apply last BUG event</button>
+    <hr>
+    <button id="reset-multi-btn">Reset u1+u2 (dev)</button>
+  </div>
 
   <p class="log-header">HISTORIAL (<span id="history-user-label">—</span>)</p>
   <ul id="history-list"></ul>
 
   <script type="module">
     import { drawAvatar } from "./avatar.js";
-    import { completeTask, getLog, devReset, addGold, getUsers, awardTask, awardBug, resetMulti, getUserRewards } from "./api.js";
+    import { completeTask, getLog, devReset, addGold, getUsers, awardTask, awardBug, resetMulti, getUserRewards, createTaskEvent, createBugEvent, applyEvent } from "./api.js";
 
     let taskSeq = 0;
     let bugSeq = 0;
     let lastTaskKey = null;
     let lastBugKey = null;
+    let lastTaskEventId = null;
+    let lastBugEventId  = null;
 
     const canvas    = document.getElementById("avatar-canvas");
     const levelEl   = document.getElementById("level-value");
@@ -62,10 +80,19 @@
     const resetMultiBtn    = document.getElementById("reset-multi-btn");
     const historyUserLabel = document.getElementById("history-user-label");
     const historyList      = document.getElementById("history-list");
-    const newTaskBtn    = document.getElementById("new-task-btn");
-    const repeatTaskBtn = document.getElementById("repeat-task-btn");
-    const newBugBtn     = document.getElementById("new-bug-btn");
-    const repeatBugBtn  = document.getElementById("repeat-bug-btn");
+    const userCheckboxesEl = document.getElementById("user-checkboxes");
+    const spInput          = document.getElementById("sp-input");
+    const severitySelect   = document.getElementById("severity-select");
+    const taskKeyInput     = document.getElementById("task-key-input");
+    const bugKeyInput      = document.getElementById("bug-key-input");
+    const awardTaskBtn     = document.getElementById("award-task-btn");
+    const repeatTaskBtn    = document.getElementById("repeat-task-btn");
+    const awardBugBtn          = document.getElementById("award-bug-btn");
+    const repeatBugBtn         = document.getElementById("repeat-bug-btn");
+    const createTaskEventBtn   = document.getElementById("create-task-event-btn");
+    const applyTaskEventBtn    = document.getElementById("apply-task-event-btn");
+    const createBugEventBtn    = document.getElementById("create-bug-event-btn");
+    const applyBugEventBtn     = document.getElementById("apply-bug-event-btn");
 
     // Fibonacci cost — mirrors server/domain/User.js#levelUpCost
     function levelUpCost(level) {
@@ -189,6 +216,76 @@
       });
     }
 
+    function formatTaskResult(r) {
+      if (r.rewarded) {
+        const gained = Number.isInteger(r.levelsGained) ? r.levelsGained : 0;
+        const lvStr = gained > 0
+          ? `Lv${r.newLevel - gained} → Lv${r.newLevel}, newExp: ${r.newExp}`
+          : `Lv${r.newLevel}, newExp: ${r.newExp}`;
+        return `rewarded (${lvStr})`;
+      }
+      return r.reason ?? "not rewarded";
+    }
+
+    function formatBugResult(r) {
+      if (r.rewarded) return `rewarded (+${r.goldAwarded} Gold, newGold: ${r.newGold})`;
+      return r.reason ?? "not rewarded";
+    }
+
+    function resultCssClass(results) {
+      if (results.some((r) => r.reason === "user_not_found")) return "error";
+      if (results.some((r) => r.rewarded)) return "success";
+      return "";
+    }
+
+    function renderResultStatus(title, results, formatLine) {
+      const strong = document.createElement("strong");
+      strong.textContent = title;
+      const ul = document.createElement("ul");
+      results.forEach((r) => {
+        const li = document.createElement("li");
+        li.textContent = `${r.userId}: ${formatLine(r)}`;
+        ul.appendChild(li);
+      });
+      statusEl.className = resultCssClass(results);
+      statusEl.innerHTML = "";
+      statusEl.appendChild(strong);
+      statusEl.appendChild(ul);
+    }
+
+    function getSelectedUserIds() {
+      return Array.from(userCheckboxesEl.querySelectorAll("input:checked")).map((cb) => cb.value);
+    }
+
+    function ensureNonEmptySelection(userIds) {
+      if (userIds.length === 0) {
+        setStatus("Selecciona al menos 1 usuario.", "error");
+        return false;
+      }
+      return true;
+    }
+
+    function nextTaskKey() { return `HU-DEMO-${++taskSeq}`; }
+    function nextBugKey()  { return `BUG-DEMO-${++bugSeq}`; }
+
+    function populateUserCheckboxes(users) {
+      const checked = new Set(
+        Array.from(userCheckboxesEl.querySelectorAll("input:checked")).map((cb) => cb.value)
+      );
+      const nonLocal = users.filter((u) => u.id !== "local");
+      userCheckboxesEl.innerHTML = "";
+      users.forEach((u) => {
+        const label = document.createElement("label");
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.value = u.id;
+        cb.checked = checked.size > 0 ? checked.has(u.id) : (nonLocal.length > 0 ? u.id !== "local" : true);
+        label.appendChild(cb);
+        label.appendChild(document.createTextNode(" " + u.id));
+        userCheckboxesEl.appendChild(label);
+      });
+    }
+
     function renderUserEntry(u) {
       const li = document.createElement("li");
       li.textContent = `${u.id}  Lv${u.level}  EXP:${u.exp}  Gold:${u.gold}`;
@@ -197,6 +294,7 @@
 
     async function refreshUsers() {
       const users = await getUsers();
+      populateUserCheckboxes(users);
       usersListEl.innerHTML = "";
       users.forEach((u) => usersListEl.appendChild(renderUserEntry(u)));
     }
@@ -206,60 +304,124 @@
       refreshHistory().catch(() => {});
     });
 
-    async function doAwardTask(key) {
+    async function doAwardTask(key, storyPoints, userIds) {
       try {
-        const result = await awardTask(key, 3, ["u1", "u2"]);
-        const allDup = result.results.every((r) => !r.rewarded && r.reason === "duplicate");
-        setStatus(
-          allDup ? `Ya recompensado — sin cambios (${key})` : `Recompensa aplicada (${key})`,
-          allDup ? "" : "success"
-        );
+        const result = await awardTask(key, storyPoints, userIds);
+        lastTaskEventId = result.event.id;
+        renderResultStatus(`${result.event.type} ${result.event.key}`, result.results, formatTaskResult);
         await Promise.all([refreshUsers(), refreshUI(), refreshHistory()]);
       } catch {
         setStatus("Error al simular TASK.", "error");
       }
     }
 
-    async function doAwardBug(key) {
+    async function doAwardBug(key, severity, userIds) {
       try {
-        const result = await awardBug(key, "High", ["u1", "u2"]);
-        const allDup = result.results.every((r) => !r.rewarded && r.reason === "duplicate");
-        setStatus(
-          allDup ? `Ya recompensado — sin cambios (${key})` : `Recompensa aplicada (${key}) (+3 gold each)`,
-          allDup ? "" : "success"
-        );
+        const result = await awardBug(key, severity, userIds);
+        lastBugEventId = result.event.id;
+        renderResultStatus(`${result.event.type} ${result.event.key}`, result.results, formatBugResult);
         await Promise.all([refreshUsers(), refreshUI(), refreshHistory()]);
       } catch {
         setStatus("Error al simular BUG.", "error");
       }
     }
 
-    newTaskBtn.addEventListener("click", async () => {
-      newTaskBtn.disabled = true;
-      lastTaskKey = `HU-DEMO-${++taskSeq}`;
-      await doAwardTask(lastTaskKey);
-      newTaskBtn.disabled = false;
+    awardTaskBtn.addEventListener("click", async () => {
+      const userIds = getSelectedUserIds();
+      if (!ensureNonEmptySelection(userIds)) return;
+      const storyPoints = Math.max(1, Number(spInput.value) || 3);
+      let key = taskKeyInput.value.trim();
+      if (!key) { key = nextTaskKey(); taskKeyInput.value = key; }
+      lastTaskKey = key;
+      awardTaskBtn.disabled = true;
+      await doAwardTask(key, storyPoints, userIds);
+      awardTaskBtn.disabled = false;
     });
 
     repeatTaskBtn.addEventListener("click", async () => {
-      if (!lastTaskKey) { setStatus("Primero genera un TASK nuevo.", "error"); return; }
+      if (!lastTaskKey) { setStatus("Primero lanza un TASK.", "error"); return; }
+      const userIds = getSelectedUserIds();
+      if (!ensureNonEmptySelection(userIds)) return;
+      const storyPoints = Math.max(1, Number(spInput.value) || 3);
       repeatTaskBtn.disabled = true;
-      await doAwardTask(lastTaskKey);
+      await doAwardTask(lastTaskKey, storyPoints, userIds);
       repeatTaskBtn.disabled = false;
     });
 
-    newBugBtn.addEventListener("click", async () => {
-      newBugBtn.disabled = true;
-      lastBugKey = `BUG-DEMO-${++bugSeq}`;
-      await doAwardBug(lastBugKey);
-      newBugBtn.disabled = false;
+    awardBugBtn.addEventListener("click", async () => {
+      const userIds = getSelectedUserIds();
+      if (!ensureNonEmptySelection(userIds)) return;
+      const severity = severitySelect.value;
+      let key = bugKeyInput.value.trim();
+      if (!key) { key = nextBugKey(); bugKeyInput.value = key; }
+      lastBugKey = key;
+      awardBugBtn.disabled = true;
+      await doAwardBug(key, severity, userIds);
+      awardBugBtn.disabled = false;
     });
 
     repeatBugBtn.addEventListener("click", async () => {
-      if (!lastBugKey) { setStatus("Primero genera un BUG nuevo.", "error"); return; }
+      if (!lastBugKey) { setStatus("Primero lanza un BUG.", "error"); return; }
+      const userIds = getSelectedUserIds();
+      if (!ensureNonEmptySelection(userIds)) return;
+      const severity = severitySelect.value;
       repeatBugBtn.disabled = true;
-      await doAwardBug(lastBugKey);
+      await doAwardBug(lastBugKey, severity, userIds);
       repeatBugBtn.disabled = false;
+    });
+
+    createTaskEventBtn.addEventListener("click", async () => {
+      const storyPoints = Math.max(1, Number(spInput.value) || 3);
+      let key = taskKeyInput.value.trim();
+      if (!key) { key = nextTaskKey(); taskKeyInput.value = key; }
+      lastTaskKey = key;
+      createTaskEventBtn.disabled = true;
+      try {
+        const { event } = await createTaskEvent(key, storyPoints);
+        lastTaskEventId = event.id;
+        setStatus(`Created TASK event id=${event.id} key=${event.key}`, "success");
+      } catch { setStatus("Error al crear TASK event.", "error"); }
+      finally { createTaskEventBtn.disabled = false; }
+    });
+
+    applyTaskEventBtn.addEventListener("click", async () => {
+      if (!lastTaskEventId) { setStatus("Primero crea un TASK event.", "error"); return; }
+      const userIds = getSelectedUserIds();
+      if (!ensureNonEmptySelection(userIds)) return;
+      applyTaskEventBtn.disabled = true;
+      try {
+        const result = await applyEvent(lastTaskEventId, userIds);
+        renderResultStatus(`${result.event.type} ${result.event.key}`, result.results, formatTaskResult);
+        await Promise.all([refreshUsers(), refreshUI(), refreshHistory()]);
+      } catch { setStatus("Error al aplicar TASK event.", "error"); }
+      finally { applyTaskEventBtn.disabled = false; }
+    });
+
+    createBugEventBtn.addEventListener("click", async () => {
+      const severity = severitySelect.value;
+      let key = bugKeyInput.value.trim();
+      if (!key) { key = nextBugKey(); bugKeyInput.value = key; }
+      lastBugKey = key;
+      createBugEventBtn.disabled = true;
+      try {
+        const { event } = await createBugEvent(key, severity);
+        lastBugEventId = event.id;
+        setStatus(`Created BUG event id=${event.id} key=${event.key}`, "success");
+      } catch { setStatus("Error al crear BUG event.", "error"); }
+      finally { createBugEventBtn.disabled = false; }
+    });
+
+    applyBugEventBtn.addEventListener("click", async () => {
+      if (!lastBugEventId) { setStatus("Primero crea un BUG event.", "error"); return; }
+      const userIds = getSelectedUserIds();
+      if (!ensureNonEmptySelection(userIds)) return;
+      applyBugEventBtn.disabled = true;
+      try {
+        const result = await applyEvent(lastBugEventId, userIds);
+        renderResultStatus(`${result.event.type} ${result.event.key}`, result.results, formatBugResult);
+        await Promise.all([refreshUsers(), refreshUI(), refreshHistory()]);
+      } catch { setStatus("Error al aplicar BUG event.", "error"); }
+      finally { applyBugEventBtn.disabled = false; }
     });
 
     resetMultiBtn.addEventListener("click", async () => {

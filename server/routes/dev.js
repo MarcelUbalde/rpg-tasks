@@ -8,6 +8,9 @@ import { logRepository } from "../infrastructure/repositories/logRepository.js";
 import { applyGoldGain } from "../domain/User.js";
 import { awardTaskExpToUsers } from "../application/awardTaskExpToUsers.js";
 import { awardBugGoldToUsers } from "../application/awardBugGoldToUsers.js";
+import { createTaskRewardEvent } from "../application/createTaskRewardEvent.js";
+import { createBugRewardEvent }  from "../application/createBugRewardEvent.js";
+import { applyRewardEventToUsers } from "../application/applyRewardEventToUsers.js";
 import { rewardEventRepository } from "../infrastructure/repositories/rewardEventRepository.js";
 import { rewardEventUserRepository } from "../infrastructure/repositories/rewardEventUserRepository.js";
 import { runInTransaction, db } from "../infrastructure/db.js";
@@ -70,6 +73,51 @@ devRouter.post("/award-bug", (req, res) => {
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
+});
+
+devRouter.post("/create-task-event", (req, res) => {
+  if (process.env.NODE_ENV === "production") {
+    return res.status(403).json({ error: "Dev endpoint disabled in production" });
+  }
+  const { taskId, storyPoints } = req.body;
+  if (typeof taskId !== "string" || !taskId) {
+    return res.status(400).json({ error: "taskId must be a non-empty string" });
+  }
+  if (!Number.isInteger(storyPoints) || storyPoints <= 0) {
+    return res.status(400).json({ error: "storyPoints must be a positive integer" });
+  }
+  try {
+    res.json(createTaskRewardEvent({ taskId, storyPoints }, awardDeps));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+devRouter.post("/create-bug-event", (req, res) => {
+  if (process.env.NODE_ENV === "production") {
+    return res.status(403).json({ error: "Dev endpoint disabled in production" });
+  }
+  const { jiraKey, severity } = req.body;
+  if (typeof jiraKey !== "string" || !jiraKey) {
+    return res.status(400).json({ error: "jiraKey must be a non-empty string" });
+  }
+  try {
+    res.json(createBugRewardEvent({ jiraKey, severity }, awardDeps));
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+devRouter.post("/apply-event", (req, res) => {
+  if (process.env.NODE_ENV === "production") {
+    return res.status(403).json({ error: "Dev endpoint disabled in production" });
+  }
+  const { eventId, userIds } = req.body;
+  if (!Number.isInteger(eventId) || eventId <= 0) {
+    return res.status(400).json({ error: "eventId must be a positive integer" });
+  }
+  if (!Array.isArray(userIds) || userIds.length === 0) {
+    return res.status(400).json({ error: "userIds must be a non-empty array" });
+  }
+  try {
+    res.json(applyRewardEventToUsers({ eventId, userIds }, awardDeps));
+  } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
 devRouter.post("/reset-multi", (_req, res) => {
