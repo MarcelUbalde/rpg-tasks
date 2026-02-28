@@ -40,10 +40,10 @@ function setupDb() {
 }
 
 function makeTransaction(db) {
-  return (fn) => {
+  return async (fn) => {
     db.exec("BEGIN IMMEDIATE");
     try {
-      const result = fn();
+      const result = await fn();
       db.exec("COMMIT");
       return result;
     } catch (err) {
@@ -68,29 +68,29 @@ describe("awardTaskExpToUsers", () => {
 
   beforeEach(() => { deps = makeDeps(setupDb()); });
 
-  it("awards full EXP to both users", () => {
-    const r = awardTaskExpToUsers({ taskId: "HU-1", storyPoints: 3, userIds: ["u1", "u2"] }, deps);
+  it("awards full EXP to both users", async () => {
+    const r = await awardTaskExpToUsers({ taskId: "HU-1", storyPoints: 3, userIds: ["u1", "u2"] }, deps);
     // 3 EXP from L1: costs 1 (L1→L2) + 2 (L2→L3) = 3 total → newLevel 3
     expect(r.results[0]).toMatchObject({ userId: "u1", rewarded: true, newLevel: 3 });
     expect(r.results[1]).toMatchObject({ userId: "u2", rewarded: true, newLevel: 3 });
   });
 
-  it("is idempotent — second call skips both", () => {
-    awardTaskExpToUsers({ taskId: "HU-2", storyPoints: 3, userIds: ["u1", "u2"] }, deps);
-    const r2 = awardTaskExpToUsers({ taskId: "HU-2", storyPoints: 3, userIds: ["u1", "u2"] }, deps);
+  it("is idempotent — second call skips both", async () => {
+    await awardTaskExpToUsers({ taskId: "HU-2", storyPoints: 3, userIds: ["u1", "u2"] }, deps);
+    const r2 = await awardTaskExpToUsers({ taskId: "HU-2", storyPoints: 3, userIds: ["u1", "u2"] }, deps);
     expect(r2.results[0]).toMatchObject({ rewarded: false, reason: "duplicate" });
     expect(r2.results[1]).toMatchObject({ rewarded: false, reason: "duplicate" });
   });
 
-  it("mixed scenario — first [u1], second [u1,u2] only rewards u2", () => {
-    awardTaskExpToUsers({ taskId: "HU-3", storyPoints: 1, userIds: ["u1"] }, deps);
-    const r2 = awardTaskExpToUsers({ taskId: "HU-3", storyPoints: 1, userIds: ["u1", "u2"] }, deps);
+  it("mixed scenario — first [u1], second [u1,u2] only rewards u2", async () => {
+    await awardTaskExpToUsers({ taskId: "HU-3", storyPoints: 1, userIds: ["u1"] }, deps);
+    const r2 = await awardTaskExpToUsers({ taskId: "HU-3", storyPoints: 1, userIds: ["u1", "u2"] }, deps);
     expect(r2.results.find((r) => r.userId === "u1")).toMatchObject({ rewarded: false, reason: "duplicate" });
     expect(r2.results.find((r) => r.userId === "u2")).toMatchObject({ rewarded: true });
   });
 
-  it("does not lock slot for missing user — explicitly verified in DB", () => {
-    const r = awardTaskExpToUsers({ taskId: "HU-4", storyPoints: 1, userIds: ["ghost"] }, deps);
+  it("does not lock slot for missing user — explicitly verified in DB", async () => {
+    const r = await awardTaskExpToUsers({ taskId: "HU-4", storyPoints: 1, userIds: ["ghost"] }, deps);
     expect(r.results[0]).toMatchObject({ rewarded: false, reason: "user_not_found" });
     // Explicitly verify: no reward_event_users row was inserted for the ghost user.
     // If a row existed, the ghost could never be rewarded later even after being added.
@@ -103,11 +103,11 @@ describe("awardTaskExpToUsers", () => {
     expect(row).toBeUndefined();
   });
 
-  it("same key, different SP on second call → throws payload_mismatch", () => {
-    awardTaskExpToUsers({ taskId: "HU-5", storyPoints: 1, userIds: ["u1"] }, deps);
-    expect(() =>
+  it("same key, different SP on second call → throws payload_mismatch", async () => {
+    await awardTaskExpToUsers({ taskId: "HU-5", storyPoints: 1, userIds: ["u1"] }, deps);
+    await expect(
       awardTaskExpToUsers({ taskId: "HU-5", storyPoints: 3, userIds: ["u2"] }, deps)
-    ).toThrow("payload_mismatch");
+    ).rejects.toThrow("payload_mismatch");
     // Verify u2 was NOT rewarded
     const event = deps.db
       .prepare("SELECT id FROM reward_events WHERE type = ? AND external_key = ?")
@@ -118,12 +118,12 @@ describe("awardTaskExpToUsers", () => {
     expect(row).toBeUndefined();
   });
 
-  it("same key + same payload + same user twice → second call is a no-op", () => {
+  it("same key + same payload + same user twice → second call is a no-op", async () => {
     // First award — applies exp; capture resulting state
-    awardTaskExpToUsers({ taskId: "HU-10", storyPoints: 2, userIds: ["u1"] }, deps);
+    await awardTaskExpToUsers({ taskId: "HU-10", storyPoints: 2, userIds: ["u1"] }, deps);
     const s1 = deps.db.prepare("SELECT level, exp FROM users WHERE id = ?").get("u1");
     // Second award same key/payload/user — must be a complete no-op
-    awardTaskExpToUsers({ taskId: "HU-10", storyPoints: 2, userIds: ["u1"] }, deps);
+    await awardTaskExpToUsers({ taskId: "HU-10", storyPoints: 2, userIds: ["u1"] }, deps);
     const s2 = deps.db.prepare("SELECT level, exp FROM users WHERE id = ?").get("u1");
     expect(s2.level).toBe(s1.level);
     expect(s2.exp).toBe(s1.exp);
@@ -137,9 +137,9 @@ describe("awardTaskExpToUsers", () => {
     expect(count.cnt).toBe(1);
   });
 
-  it("Jira Done: different doneEventId → two distinct reward events, user rewarded twice", () => {
-    awardTaskExpToUsers({ taskId: "HU-20-done-1", storyPoints: 2, userIds: ["u1"] }, deps);
-    awardTaskExpToUsers({ taskId: "HU-20-done-2", storyPoints: 2, userIds: ["u1"] }, deps);
+  it("Jira Done: different doneEventId → two distinct reward events, user rewarded twice", async () => {
+    await awardTaskExpToUsers({ taskId: "HU-20-done-1", storyPoints: 2, userIds: ["u1"] }, deps);
+    await awardTaskExpToUsers({ taskId: "HU-20-done-2", storyPoints: 2, userIds: ["u1"] }, deps);
 
     const evtCount = deps.db
       .prepare("SELECT COUNT(*) cnt FROM reward_events WHERE type = 'TASK' AND external_key LIKE 'HU-20-done-%'")
@@ -159,11 +159,11 @@ describe("awardTaskExpToUsers", () => {
     expect(reuCount.cnt).toBe(2);
   });
 
-  it("Jira Done: same doneEventId → idempotent, user state unchanged on second call", () => {
-    awardTaskExpToUsers({ taskId: "HU-20-done-1", storyPoints: 2, userIds: ["u1"] }, deps);
+  it("Jira Done: same doneEventId → idempotent, user state unchanged on second call", async () => {
+    await awardTaskExpToUsers({ taskId: "HU-20-done-1", storyPoints: 2, userIds: ["u1"] }, deps);
     const s1 = deps.db.prepare("SELECT level, exp FROM users WHERE id = ?").get("u1");
 
-    awardTaskExpToUsers({ taskId: "HU-20-done-1", storyPoints: 2, userIds: ["u1"] }, deps);
+    await awardTaskExpToUsers({ taskId: "HU-20-done-1", storyPoints: 2, userIds: ["u1"] }, deps);
     const s2 = deps.db.prepare("SELECT level, exp FROM users WHERE id = ?").get("u1");
 
     const evtCount = deps.db
@@ -189,36 +189,36 @@ describe("awardBugGoldToUsers", () => {
 
   beforeEach(() => { deps = makeDeps(setupDb()); });
 
-  it("awards gold=3 for High severity to both users", () => {
-    const r = awardBugGoldToUsers({ jiraKey: "BUG-1", severity: "High", userIds: ["u1", "u2"] }, deps);
+  it("awards gold=3 for High severity to both users", async () => {
+    const r = await awardBugGoldToUsers({ jiraKey: "BUG-1", severity: "High", userIds: ["u1", "u2"] }, deps);
     expect(r.results[0]).toMatchObject({ userId: "u1", rewarded: true, goldAwarded: 3 });
     expect(r.results[1]).toMatchObject({ userId: "u2", rewarded: true, goldAwarded: 3 });
   });
 
-  it("is idempotent — second call skips both", () => {
-    awardBugGoldToUsers({ jiraKey: "BUG-2", severity: "High", userIds: ["u1", "u2"] }, deps);
-    const r2 = awardBugGoldToUsers({ jiraKey: "BUG-2", severity: "High", userIds: ["u1", "u2"] }, deps);
+  it("is idempotent — second call skips both", async () => {
+    await awardBugGoldToUsers({ jiraKey: "BUG-2", severity: "High", userIds: ["u1", "u2"] }, deps);
+    const r2 = await awardBugGoldToUsers({ jiraKey: "BUG-2", severity: "High", userIds: ["u1", "u2"] }, deps);
     expect(r2.results[0]).toMatchObject({ rewarded: false, reason: "duplicate" });
     expect(r2.results[1]).toMatchObject({ rewarded: false, reason: "duplicate" });
   });
 
-  it("mixed scenario — first [u1], second [u1,u2] only rewards u2", () => {
-    awardBugGoldToUsers({ jiraKey: "BUG-3", severity: "Low", userIds: ["u1"] }, deps);
-    const r2 = awardBugGoldToUsers({ jiraKey: "BUG-3", severity: "Low", userIds: ["u1", "u2"] }, deps);
+  it("mixed scenario — first [u1], second [u1,u2] only rewards u2", async () => {
+    await awardBugGoldToUsers({ jiraKey: "BUG-3", severity: "Low", userIds: ["u1"] }, deps);
+    const r2 = await awardBugGoldToUsers({ jiraKey: "BUG-3", severity: "Low", userIds: ["u1", "u2"] }, deps);
     expect(r2.results.find((r) => r.userId === "u1")).toMatchObject({ rewarded: false, reason: "duplicate" });
     expect(r2.results.find((r) => r.userId === "u2")).toMatchObject({ rewarded: true, goldAwarded: 1 });
   });
 
-  it("throws for invalid severity", () => {
-    expect(() =>
+  it("throws for invalid severity", async () => {
+    await expect(
       awardBugGoldToUsers({ jiraKey: "BUG-X", severity: "Legendary", userIds: ["u1"] }, deps)
-    ).toThrow();
+    ).rejects.toThrow();
   });
 
-  it("same key + different severity → throws payload_mismatch", () => {
-    awardBugGoldToUsers({ jiraKey: "BUG-P1", severity: "High", userIds: ["u1"] }, deps);
-    expect(() =>
+  it("same key + different severity → throws payload_mismatch", async () => {
+    await awardBugGoldToUsers({ jiraKey: "BUG-P1", severity: "High", userIds: ["u1"] }, deps);
+    await expect(
       awardBugGoldToUsers({ jiraKey: "BUG-P1", severity: "Critical", userIds: ["u2"] }, deps)
-    ).toThrow("payload_mismatch");
+    ).rejects.toThrow("payload_mismatch");
   });
 });

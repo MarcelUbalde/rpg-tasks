@@ -13,14 +13,14 @@ import { createBugRewardEvent }  from "../application/createBugRewardEvent.js";
 import { applyRewardEventToUsers } from "../application/applyRewardEventToUsers.js";
 import { rewardEventRepository } from "../infrastructure/repositories/rewardEventRepository.js";
 import { rewardEventUserRepository } from "../infrastructure/repositories/rewardEventUserRepository.js";
-import { runInTransaction, db } from "../infrastructure/db.js";
+import { runInTransaction } from "../infrastructure/db.pg.js";
 
 export const devRouter = Router();
 
-devRouter.post("/reset", (_req, res) => {
-  userRepository.reset("local");
-  rewardRepository.clear();
-  logRepository.clear();
+devRouter.post("/reset", async (_req, res) => {
+  await userRepository.reset("local");
+  await rewardRepository.clear();
+  await logRepository.clear();
   res.json({ ok: true });
 });
 
@@ -33,7 +33,7 @@ const awardDeps = {
 
 const VALID_SEVERITIES = new Set(["Low", "Medium", "High", "Critical"]);
 
-devRouter.post("/award-task", (req, res) => {
+devRouter.post("/award-task", async (req, res) => {
   if (process.env.NODE_ENV === "production") {
     return res.status(403).json({ error: "Dev endpoint disabled in production" });
   }
@@ -48,7 +48,7 @@ devRouter.post("/award-task", (req, res) => {
     return res.status(400).json({ error: "userIds must be a non-empty array" });
   }
   try {
-    res.json(awardTaskExpToUsers({ taskId, storyPoints, userIds }, awardDeps));
+    res.json(await awardTaskExpToUsers({ taskId, storyPoints, userIds }, awardDeps));
   } catch (err) {
     if (err.code === "payload_mismatch") {
       return res.status(409).json({
@@ -70,7 +70,7 @@ devRouter.post("/award-task", (req, res) => {
   }
 });
 
-devRouter.post("/award-bug", (req, res) => {
+devRouter.post("/award-bug", async (req, res) => {
   if (process.env.NODE_ENV === "production") {
     return res.status(403).json({ error: "Dev endpoint disabled in production" });
   }
@@ -85,7 +85,7 @@ devRouter.post("/award-bug", (req, res) => {
     return res.status(400).json({ error: "userIds must be a non-empty array" });
   }
   try {
-    res.json(awardBugGoldToUsers({ jiraKey, severity, userIds }, awardDeps));
+    res.json(await awardBugGoldToUsers({ jiraKey, severity, userIds }, awardDeps));
   } catch (err) {
     if (err.code === "payload_mismatch") {
       return res.status(409).json({
@@ -107,7 +107,7 @@ devRouter.post("/award-bug", (req, res) => {
   }
 });
 
-devRouter.post("/jira/task-done", (req, res) => {
+devRouter.post("/jira/task-done", async (req, res) => {
   if (process.env.NODE_ENV === "production") {
     return res.status(403).json({ error: "Dev endpoint disabled in production" });
   }
@@ -123,7 +123,7 @@ devRouter.post("/jira/task-done", (req, res) => {
   }
   try {
     const externalKey = `${issueKey}-done-${doneEventId}`;
-    res.json(awardTaskExpToUsers({ taskId: externalKey, storyPoints, userIds }, awardDeps));
+    res.json(await awardTaskExpToUsers({ taskId: externalKey, storyPoints, userIds }, awardDeps));
   } catch (err) {
     if (err.code === "payload_mismatch") {
       return res.status(409).json({
@@ -145,7 +145,7 @@ devRouter.post("/jira/task-done", (req, res) => {
   }
 });
 
-devRouter.post("/create-task-event", (req, res) => {
+devRouter.post("/create-task-event", async (req, res) => {
   if (process.env.NODE_ENV === "production") {
     return res.status(403).json({ error: "Dev endpoint disabled in production" });
   }
@@ -157,11 +157,11 @@ devRouter.post("/create-task-event", (req, res) => {
     return res.status(400).json({ error: "storyPoints must be a positive integer" });
   }
   try {
-    res.json(createTaskRewardEvent({ taskId, storyPoints }, awardDeps));
+    res.json(await createTaskRewardEvent({ taskId, storyPoints }, awardDeps));
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
-devRouter.post("/create-bug-event", (req, res) => {
+devRouter.post("/create-bug-event", async (req, res) => {
   if (process.env.NODE_ENV === "production") {
     return res.status(403).json({ error: "Dev endpoint disabled in production" });
   }
@@ -170,11 +170,11 @@ devRouter.post("/create-bug-event", (req, res) => {
     return res.status(400).json({ error: "jiraKey must be a non-empty string" });
   }
   try {
-    res.json(createBugRewardEvent({ jiraKey, severity }, awardDeps));
+    res.json(await createBugRewardEvent({ jiraKey, severity }, awardDeps));
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
-devRouter.post("/apply-event", (req, res) => {
+devRouter.post("/apply-event", async (req, res) => {
   if (process.env.NODE_ENV === "production") {
     return res.status(403).json({ error: "Dev endpoint disabled in production" });
   }
@@ -186,24 +186,24 @@ devRouter.post("/apply-event", (req, res) => {
     return res.status(400).json({ error: "userIds must be a non-empty array" });
   }
   try {
-    res.json(applyRewardEventToUsers({ eventId, userIds }, awardDeps));
+    res.json(await applyRewardEventToUsers({ eventId, userIds }, awardDeps));
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
-devRouter.post("/reset-multi", (_req, res) => {
+devRouter.post("/reset-multi", async (_req, res) => {
   if (process.env.NODE_ENV === "production") {
     return res.status(403).json({ error: "Dev endpoint disabled in production" });
   }
-  runInTransaction(() => {
+  await runInTransaction(async () => {
     for (const uid of ["u1", "u2"]) {
-      userRepository.reset(uid);
+      await userRepository.reset(uid);
     }
-    db.prepare("DELETE FROM reward_event_users WHERE user_id IN ('u1', 'u2')").run();
+    await rewardEventUserRepository.clearForUsers(["u1", "u2"]);
   });
   res.json({ ok: true });
 });
 
-devRouter.post("/add-gold", (req, res) => {
+devRouter.post("/add-gold", async (req, res) => {
   if (process.env.NODE_ENV === "production") {
     return res.status(403).json({ error: "Dev endpoint disabled in production" });
   }
@@ -211,9 +211,9 @@ devRouter.post("/add-gold", (req, res) => {
   if (!Number.isInteger(amount) || amount <= 0) {
     return res.status(400).json({ error: "amount must be a positive integer" });
   }
-  const user = userRepository.findById("local");
+  const user = await userRepository.findById("local");
   if (!user) return res.status(404).json({ error: "User not found" });
   const updated = applyGoldGain(user, amount);
-  userRepository.save(updated);
+  await userRepository.save(updated);
   res.json({ id: updated.id, level: updated.level, exp: updated.exp, gold: updated.gold });
 });

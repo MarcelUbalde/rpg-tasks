@@ -5,23 +5,23 @@
 import { createTask } from "../domain/Task.js";
 import { processReward } from "../domain/RewardService.js";
 
-export function completeTask({ taskId, storyPoints }, { userRepo, rewardRepo, logRepo }) {
-  if (rewardRepo.existsById(taskId)) {
+export async function completeTask({ taskId, storyPoints }, { userRepo, rewardRepo, logRepo }) {
+  if (await rewardRepo.existsById(taskId)) {
     return { rewarded: false, reason: "duplicate" };
   }
 
-  const user = userRepo.findById("local");
+  const user = await userRepo.findById("local");
   const task = createTask(taskId, storyPoints);
   const result = processReward(user, task);
 
-  userRepo.save(result.updatedUser);
-  rewardRepo.save({
+  await userRepo.save(result.updatedUser);
+  await rewardRepo.save({
     id: taskId,
     user_id: "local",
     story_points: storyPoints,
     rewarded_at: new Date().toISOString(),
   });
-  const logEntry = logRepo.save({
+  const logEntry = await logRepo.save({
     user_id: "local",
     message: result.logMessage,
     created_at: new Date().toISOString(),

@@ -1,27 +1,26 @@
 // server/infrastructure/repositories/rewardRepository.js
 
-import { db } from "../db.js";
-
-const existsStmt = db.prepare(
-  "SELECT id FROM rewarded_tasks WHERE id = ?"
-);
-
-const saveStmt = db.prepare(
-  `INSERT INTO rewarded_tasks (id, user_id, story_points, rewarded_at)
-   VALUES (@id, @user_id, @story_points, @rewarded_at)`
-);
-
-const clearStmt = db.prepare("DELETE FROM rewarded_tasks");
+import { getDb } from "../db.pg.js";
 
 export const rewardRepository = {
-  existsById(id) {
-    return existsStmt.get(id) !== undefined;
+  async existsById(id) {
+    const { rows } = await getDb().query(
+      "SELECT id FROM rewarded_tasks WHERE id = $1",
+      [id]
+    );
+    return rows.length > 0;
   },
-  save(entry) {
-    saveStmt.run(entry);
+
+  async save(entry) {
+    await getDb().query(
+      `INSERT INTO rewarded_tasks (id, user_id, story_points, rewarded_at)
+       VALUES ($1, $2, $3, $4)`,
+      [entry.id, entry.user_id, entry.story_points, entry.rewarded_at]
+    );
     return entry;
   },
-  clear() {
-    clearStmt.run();
+
+  async clear() {
+    await getDb().query("DELETE FROM rewarded_tasks");
   },
 };

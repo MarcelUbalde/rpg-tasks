@@ -3,11 +3,12 @@
 import { Router } from "express";
 import { userRepository } from "../infrastructure/repositories/userRepository.js";
 import { getEvolutionStage } from "../domain/User.js";
+import { asyncHandler } from "./asyncHandler.js";
 
 export const usersRouter = Router();
 
-usersRouter.get("/", (_req, res) => {
-  const users = userRepository.findAll();
+usersRouter.get("/", asyncHandler(async (_req, res) => {
+  const users = await userRepository.findAll();
   res.json(
     users.map((u) => ({
       id: u.id,
@@ -17,4 +18,4 @@ usersRouter.get("/", (_req, res) => {
       evolutionStage: getEvolutionStage(u.level),
     }))
   );
-});
+}));

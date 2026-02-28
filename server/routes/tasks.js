@@ -16,7 +16,7 @@ const repos = {
   logRepo: logRepository,
 };
 
-tasksRouter.post("/complete", (req, res, next) => {
+tasksRouter.post("/complete", async (req, res, next) => {
   const { taskId, storyPoints } = req.body;
 
   if (!taskId || typeof taskId !== "string") {
@@ -27,7 +27,7 @@ tasksRouter.post("/complete", (req, res, next) => {
   }
 
   try {
-    const result = completeTask({ taskId, storyPoints }, repos);
+    const result = await completeTask({ taskId, storyPoints }, repos);
     res.json(result);
   } catch (err) {
     next(err);

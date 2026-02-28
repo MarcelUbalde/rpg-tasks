@@ -36,9 +36,9 @@ describe("completeTask", () => {
     logRepo = makeLogRepo();
   });
 
-  it("SP=1 from level 1 exp 0 => level 2 exp 0", () => {
+  it("SP=1 from level 1 exp 0 => level 2 exp 0", async () => {
     // gains 1, cost(1)=1 → level 2, exp 0
-    const result = completeTask(
+    const result = await completeTask(
       { taskId: "T-1", storyPoints: 1 },
       { userRepo, rewardRepo, logRepo }
     );
@@ -49,10 +49,10 @@ describe("completeTask", () => {
     expect(result.logEntry.message).toBe("+1 nivel — T-1 (1 SP)");
   });
 
-  it("SP=2 from level 2 exp 0 => level 3 exp 0", () => {
+  it("SP=2 from level 2 exp 0 => level 3 exp 0", async () => {
     // gains 2, cost(2)=2 → level 3, exp 0
     userRepo = makeUserRepo({ id: "local", level: 2, exp: 0, gold: 0, updated_at: "" });
-    const result = completeTask(
+    const result = await completeTask(
       { taskId: "T-2", storyPoints: 2 },
       { userRepo, rewardRepo, logRepo }
     );
@@ -62,9 +62,9 @@ describe("completeTask", () => {
     expect(result.levelsGained).toBe(1);
   });
 
-  it("SP=2 from level 1 exp 0 => level 2 exp 1", () => {
+  it("SP=2 from level 1 exp 0 => level 2 exp 1", async () => {
     // gains 2, cost(1)=1 → level 2, exp 1; cost(2)=2 > 1 → stop
-    const result = completeTask(
+    const result = await completeTask(
       { taskId: "T-3", storyPoints: 2 },
       { userRepo, rewardRepo, logRepo }
     );
@@ -74,9 +74,9 @@ describe("completeTask", () => {
     expect(result.levelsGained).toBe(1);
   });
 
-  it("SP=8 from level 1 levels up multiple times", () => {
+  it("SP=8 from level 1 levels up multiple times", async () => {
     // gains 8: cost(1)=1→L2 exp=7; cost(2)=2→L3 exp=5; cost(3)=3→L4 exp=2; cost(4)=5>2 stop
-    const result = completeTask(
+    const result = await completeTask(
       { taskId: "T-big", storyPoints: 8 },
       { userRepo, rewardRepo, logRepo }
     );
@@ -87,9 +87,9 @@ describe("completeTask", () => {
     expect(result.logEntry.message).toBe("+3 niveles — T-big (8 SP)");
   });
 
-  it("a duplicate task does not give reward", () => {
+  it("a duplicate task does not give reward", async () => {
     rewardRepo = makeRewardRepo(["T-dup"]);
-    const result = completeTask(
+    const result = await completeTask(
       { taskId: "T-dup", storyPoints: 5 },
       { userRepo, rewardRepo, logRepo }
     );

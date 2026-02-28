@@ -41,10 +41,10 @@ function setupDb() {
 }
 
 function makeTransaction(db) {
-  return (fn) => {
+  return async (fn) => {
     db.exec("BEGIN IMMEDIATE");
     try {
-      const result = fn();
+      const result = await fn();
       db.exec("COMMIT");
       return result;
     } catch (err) {
@@ -70,22 +70,22 @@ describe("createTaskRewardEvent", () => {
   let deps;
   beforeEach(() => { deps = makeDeps(setupDb()); });
 
-  it("creates a TASK event and returns id/type/key", () => {
-    const { event } = createTaskRewardEvent({ taskId: "HU-1", storyPoints: 3 }, deps);
+  it("creates a TASK event and returns id/type/key", async () => {
+    const { event } = await createTaskRewardEvent({ taskId: "HU-1", storyPoints: 3 }, deps);
     expect(event.id).toBeTypeOf("number");
     expect(event.type).toBe("TASK");
     expect(event.key).toBe("HU-1");
   });
 
-  it("same key twice → same eventId (idempotent)", () => {
-    const r1 = createTaskRewardEvent({ taskId: "HU-1", storyPoints: 3 }, deps);
-    const r2 = createTaskRewardEvent({ taskId: "HU-1", storyPoints: 3 }, deps);
+  it("same key twice → same eventId (idempotent)", async () => {
+    const r1 = await createTaskRewardEvent({ taskId: "HU-1", storyPoints: 3 }, deps);
+    const r2 = await createTaskRewardEvent({ taskId: "HU-1", storyPoints: 3 }, deps);
     expect(r1.event.id).toBe(r2.event.id);
   });
 
-  it("throws for non-positive storyPoints", () => {
-    expect(() => createTaskRewardEvent({ taskId: "HU-X", storyPoints: 0 }, deps)).toThrow();
-    expect(() => createTaskRewardEvent({ taskId: "HU-X", storyPoints: -1 }, deps)).toThrow();
+  it("throws for non-positive storyPoints", async () => {
+    await expect(createTaskRewardEvent({ taskId: "HU-X", storyPoints: 0 }, deps)).rejects.toThrow();
+    await expect(createTaskRewardEvent({ taskId: "HU-X", storyPoints: -1 }, deps)).rejects.toThrow();
   });
 });
 
@@ -95,21 +95,21 @@ describe("createBugRewardEvent", () => {
   let deps;
   beforeEach(() => { deps = makeDeps(setupDb()); });
 
-  it("creates a BUG event and returns id/type/key", () => {
-    const { event } = createBugRewardEvent({ jiraKey: "BUG-1", severity: "High" }, deps);
+  it("creates a BUG event and returns id/type/key", async () => {
+    const { event } = await createBugRewardEvent({ jiraKey: "BUG-1", severity: "High" }, deps);
     expect(event.id).toBeTypeOf("number");
     expect(event.type).toBe("BUG");
     expect(event.key).toBe("BUG-1");
   });
 
-  it("same key twice → same eventId (idempotent)", () => {
-    const r1 = createBugRewardEvent({ jiraKey: "BUG-1", severity: "High" }, deps);
-    const r2 = createBugRewardEvent({ jiraKey: "BUG-1", severity: "High" }, deps);
+  it("same key twice → same eventId (idempotent)", async () => {
+    const r1 = await createBugRewardEvent({ jiraKey: "BUG-1", severity: "High" }, deps);
+    const r2 = await createBugRewardEvent({ jiraKey: "BUG-1", severity: "High" }, deps);
     expect(r1.event.id).toBe(r2.event.id);
   });
 
-  it("throws for invalid severity", () => {
-    expect(() => createBugRewardEvent({ jiraKey: "BUG-X", severity: "Legendary" }, deps)).toThrow();
+  it("throws for invalid severity", async () => {
+    await expect(createBugRewardEvent({ jiraKey: "BUG-X", severity: "Legendary" }, deps)).rejects.toThrow();
   });
 });
 
@@ -119,36 +119,36 @@ describe("applyRewardEventToUsers — TASK", () => {
   let deps;
   beforeEach(() => { deps = makeDeps(setupDb()); });
 
-  it("first apply → rewarded; second apply same user → duplicate", () => {
-    const { event } = createTaskRewardEvent({ taskId: "HU-T1", storyPoints: 5 }, deps);
+  it("first apply → rewarded; second apply same user → duplicate", async () => {
+    const { event } = await createTaskRewardEvent({ taskId: "HU-T1", storyPoints: 5 }, deps);
 
-    const r1 = applyRewardEventToUsers({ eventId: event.id, userIds: ["u1"] }, deps);
+    const r1 = await applyRewardEventToUsers({ eventId: event.id, userIds: ["u1"] }, deps);
     expect(r1.results[0]).toMatchObject({ userId: "u1", rewarded: true });
     expect(r1.event).toMatchObject({ type: "TASK", key: "HU-T1" });
 
-    const r2 = applyRewardEventToUsers({ eventId: event.id, userIds: ["u1"] }, deps);
+    const r2 = await applyRewardEventToUsers({ eventId: event.id, userIds: ["u1"] }, deps);
     expect(r2.results[0]).toMatchObject({ userId: "u1", rewarded: false, reason: "duplicate" });
   });
 
-  it("apply to new user after initial apply → rewarded (replay to newcomer)", () => {
-    const { event } = createTaskRewardEvent({ taskId: "HU-T2", storyPoints: 3 }, deps);
+  it("apply to new user after initial apply → rewarded (replay to newcomer)", async () => {
+    const { event } = await createTaskRewardEvent({ taskId: "HU-T2", storyPoints: 3 }, deps);
 
-    applyRewardEventToUsers({ eventId: event.id, userIds: ["u1"] }, deps);
+    await applyRewardEventToUsers({ eventId: event.id, userIds: ["u1"] }, deps);
 
-    const r2 = applyRewardEventToUsers({ eventId: event.id, userIds: ["u2"] }, deps);
+    const r2 = await applyRewardEventToUsers({ eventId: event.id, userIds: ["u2"] }, deps);
     expect(r2.results[0]).toMatchObject({ userId: "u2", rewarded: true });
   });
 
-  it("returns correct EXP and level-up info", () => {
-    const { event } = createTaskRewardEvent({ taskId: "HU-T3", storyPoints: 3 }, deps);
-    const r = applyRewardEventToUsers({ eventId: event.id, userIds: ["u1"] }, deps);
+  it("returns correct EXP and level-up info", async () => {
+    const { event } = await createTaskRewardEvent({ taskId: "HU-T3", storyPoints: 3 }, deps);
+    const r = await applyRewardEventToUsers({ eventId: event.id, userIds: ["u1"] }, deps);
     // 3 EXP from L1: costs 1 (L1→L2) + 2 (L2→L3) → newLevel 3
     expect(r.results[0]).toMatchObject({ rewarded: true, newLevel: 3, levelsGained: 2 });
   });
 
-  it("unknown user → user_not_found (no slot locked)", () => {
-    const { event } = createTaskRewardEvent({ taskId: "HU-T4", storyPoints: 1 }, deps);
-    const r = applyRewardEventToUsers({ eventId: event.id, userIds: ["ghost"] }, deps);
+  it("unknown user → user_not_found (no slot locked)", async () => {
+    const { event } = await createTaskRewardEvent({ taskId: "HU-T4", storyPoints: 1 }, deps);
+    const r = await applyRewardEventToUsers({ eventId: event.id, userIds: ["ghost"] }, deps);
     expect(r.results[0]).toMatchObject({ userId: "ghost", rewarded: false, reason: "user_not_found" });
     // Verify no row was locked in reward_event_users
     const row = deps.db
@@ -162,23 +162,23 @@ describe("applyRewardEventToUsers — BUG", () => {
   let deps;
   beforeEach(() => { deps = makeDeps(setupDb()); });
 
-  it("awards correct gold for Critical severity", () => {
-    const { event } = createBugRewardEvent({ jiraKey: "BUG-B1", severity: "Critical" }, deps);
-    const r = applyRewardEventToUsers({ eventId: event.id, userIds: ["u1"] }, deps);
+  it("awards correct gold for Critical severity", async () => {
+    const { event } = await createBugRewardEvent({ jiraKey: "BUG-B1", severity: "Critical" }, deps);
+    const r = await applyRewardEventToUsers({ eventId: event.id, userIds: ["u1"] }, deps);
     expect(r.results[0]).toMatchObject({ userId: "u1", rewarded: true, goldAwarded: 5 });
     expect(r.event).toMatchObject({ type: "BUG", key: "BUG-B1" });
   });
 
-  it("duplicate blocked on second apply", () => {
-    const { event } = createBugRewardEvent({ jiraKey: "BUG-B2", severity: "High" }, deps);
-    applyRewardEventToUsers({ eventId: event.id, userIds: ["u1"] }, deps);
-    const r2 = applyRewardEventToUsers({ eventId: event.id, userIds: ["u1"] }, deps);
+  it("duplicate blocked on second apply", async () => {
+    const { event } = await createBugRewardEvent({ jiraKey: "BUG-B2", severity: "High" }, deps);
+    await applyRewardEventToUsers({ eventId: event.id, userIds: ["u1"] }, deps);
+    const r2 = await applyRewardEventToUsers({ eventId: event.id, userIds: ["u1"] }, deps);
     expect(r2.results[0]).toMatchObject({ rewarded: false, reason: "duplicate" });
   });
 
-  it("applies to both users independently", () => {
-    const { event } = createBugRewardEvent({ jiraKey: "BUG-B3", severity: "Medium" }, deps);
-    const r = applyRewardEventToUsers({ eventId: event.id, userIds: ["u1", "u2"] }, deps);
+  it("applies to both users independently", async () => {
+    const { event } = await createBugRewardEvent({ jiraKey: "BUG-B3", severity: "Medium" }, deps);
+    const r = await applyRewardEventToUsers({ eventId: event.id, userIds: ["u1", "u2"] }, deps);
     expect(r.results).toHaveLength(2);
     expect(r.results[0]).toMatchObject({ rewarded: true, goldAwarded: 2 });
     expect(r.results[1]).toMatchObject({ rewarded: true, goldAwarded: 2 });
@@ -189,16 +189,20 @@ describe("applyRewardEventToUsers — error cases", () => {
   let deps;
   beforeEach(() => { deps = makeDeps(setupDb()); });
 
-  it("unknown eventId → throws", () => {
-    expect(() => applyRewardEventToUsers({ eventId: 9999, userIds: ["u1"] }, deps)).toThrow(/event not found/);
+  it("unknown eventId → throws", async () => {
+    await expect(
+      applyRewardEventToUsers({ eventId: 9999, userIds: ["u1"] }, deps)
+    ).rejects.toThrow(/event not found/);
   });
 
-  it("empty userIds → throws", () => {
-    const { event } = createTaskRewardEvent({ taskId: "HU-E1", storyPoints: 1 }, deps);
-    expect(() => applyRewardEventToUsers({ eventId: event.id, userIds: [] }, deps)).toThrow();
+  it("empty userIds → throws", async () => {
+    const { event } = await createTaskRewardEvent({ taskId: "HU-E1", storyPoints: 1 }, deps);
+    await expect(
+      applyRewardEventToUsers({ eventId: event.id, userIds: [] }, deps)
+    ).rejects.toThrow();
   });
 
-  it("corrupted payload_json → throws controlled error", () => {
+  it("corrupted payload_json → throws controlled error", async () => {
     // Directly insert a broken event row
     deps.db.prepare(
       `INSERT INTO reward_events (type, external_key, payload_json, created_at)
@@ -207,7 +211,8 @@ describe("applyRewardEventToUsers — error cases", () => {
     const bad = deps.db
       .prepare("SELECT id FROM reward_events WHERE external_key = 'HU-BAD'")
       .get();
-    expect(() => applyRewardEventToUsers({ eventId: bad.id, userIds: ["u1"] }, deps))
-      .toThrow(/invalid payload_json/);
+    await expect(
+      applyRewardEventToUsers({ eventId: bad.id, userIds: ["u1"] }, deps)
+    ).rejects.toThrow(/invalid payload_json/);
   });
 });

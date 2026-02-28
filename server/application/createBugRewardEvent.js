@@ -3,9 +3,9 @@
 
 import { goldForSeverity } from "../domain/BugReward.js";
 
-export function createBugRewardEvent({ jiraKey, severity }, { rewardEventRepo }) {
+export async function createBugRewardEvent({ jiraKey, severity }, { rewardEventRepo }) {
   goldForSeverity(severity); // throws on invalid severity — acts as validation
-  const raw = rewardEventRepo.findOrCreateEvent({
+  const raw = await rewardEventRepo.findOrCreateEvent({
     type: "BUG",
     externalKey: jiraKey,
     payload: { severity },

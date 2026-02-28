@@ -1,12 +1,13 @@
 // server/index.js
 // Entry point — wires Express, static files, and API routes.
 
+import "dotenv/config"; // must be first: populates process.env before any pg pool is created
+
 import express from "express";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 
-// Side-effect import: runs migrations and seeds the "local" user on startup.
-import "./infrastructure/db.js";
+import { closePgPool } from "./infrastructure/db.pg.js";
 
 import { userRouter } from "./routes/user.js";
 import { tasksRouter } from "./routes/tasks.js";
@@ -56,8 +57,8 @@ server.on("error", (err) => {
   throw err;
 });
 
-function shutdown() {
-  server.close(() => process.exit(0));
+async function shutdown() {
+  server.close(async () => { await closePgPool(); process.exit(0); });
 }
 
 process.on("SIGINT", shutdown);

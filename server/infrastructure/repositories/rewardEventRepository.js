@@ -1,6 +1,5 @@
 // server/infrastructure/repositories/rewardEventRepository.js
 
-import { db } from "../db.js";
-import { makeRewardEventRepository } from "./rewardEventRepository.factory.js";
+import { makeRewardEventRepositoryPg } from "./rewardEventRepository.pg.factory.js";
 
-export const rewardEventRepository = makeRewardEventRepository(db);
+export const rewardEventRepository = makeRewardEventRepositoryPg();
