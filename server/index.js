@@ -15,6 +15,7 @@ import { logRouter } from "./routes/log.js";
 import { usersRouter } from "./routes/users.js";
 import { userRewardsRouter } from "./routes/userRewards.js";
 import { devRouter } from "./routes/dev.js";
+import { jiraRouter } from "./routes/jira.js";
 
 // __dirname is not available in ES modules — reconstruct from import.meta.url
 const __filename = fileURLToPath(import.meta.url);
@@ -35,6 +36,8 @@ app.use("/api/log", logRouter);
 if (process.env.NODE_ENV !== "production") {
   app.use("/api/dev", devRouter);
 }
+
+app.use("/api/jira", jiraRouter);
 
 // Global error handler (4-param signature required by Express)
 app.use((err, _req, res, _next) => {

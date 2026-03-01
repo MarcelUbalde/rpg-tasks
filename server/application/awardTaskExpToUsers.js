@@ -8,8 +8,8 @@ import { applyRewardEventToUsers } from "./applyRewardEventToUsers.js";
 import { deduplicateUserIds } from "./userIds.js";
 
 export async function awardTaskExpToUsers({ taskId, storyPoints, userIds }, deps) {
-  if (!Number.isInteger(storyPoints) || storyPoints <= 0) {
-    throw new Error("storyPoints must be a positive integer");
+  if (!Number.isFinite(storyPoints) || storyPoints <= 0) {
+    throw new Error("storyPoints must be a positive number");
   }
   const uniqueIds = deduplicateUserIds(userIds);
   const raw = await deps.rewardEventRepo.assertSameOrCreate({

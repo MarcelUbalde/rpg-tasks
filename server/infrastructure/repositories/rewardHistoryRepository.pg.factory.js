@@ -2,6 +2,7 @@
 // Async Postgres reward history query repo.
 
 import { getDb } from "../db.pg.js";
+import { coerceNumeric } from "../pgNumeric.js";
 
 export function makeRewardHistoryRepositoryPg() {
   return {
@@ -26,7 +27,7 @@ export function makeRewardHistoryRepositoryPg() {
         return {
           type: row.type,
           key: row.external_key,
-          expAwarded: row.exp_awarded,
+          expAwarded: coerceNumeric(row.exp_awarded),
           goldAwarded: row.gold_awarded,
           createdAt: row.created_at,
           payload,

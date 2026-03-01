@@ -3,6 +3,14 @@
 // calls inside runInTransaction() automatically use the transaction client.
 
 import { getDb } from "../db.pg.js";
+import { coerceNumeric } from "../pgNumeric.js";
+
+// Coerce users.exp from NUMERIC string to JS number.
+// pg returns NUMERIC(12,2) columns as strings by default.
+export function mapUser(row) {
+  if (!row) return null;
+  return { ...row, exp: coerceNumeric(row.exp) };
+}
 
 export function makeUserRepositoryPg() {
   return {
@@ -11,14 +19,14 @@ export function makeUserRepositoryPg() {
         "SELECT id, level, exp, gold, updated_at FROM users WHERE id = $1",
         [id]
       );
-      return rows[0] ?? null;
+      return mapUser(rows[0] ?? null);
     },
 
     async findAll() {
       const { rows } = await getDb().query(
         "SELECT id, level, exp, gold, updated_at FROM users ORDER BY id"
       );
-      return rows;
+      return rows.map(mapUser);
     },
 
     async save(u) {
@@ -30,7 +38,7 @@ export function makeUserRepositoryPg() {
            exp        = EXCLUDED.exp,
            gold       = EXCLUDED.gold,
            updated_at = EXCLUDED.updated_at`,
-        [u.id, u.level, u.exp, u.gold, u.updated_at]
+        [u.id, u.level, Number(u.exp), u.gold, u.updated_at]
       );
       return u;
     },

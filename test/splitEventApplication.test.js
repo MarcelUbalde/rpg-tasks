@@ -216,3 +216,31 @@ describe("applyRewardEventToUsers — error cases", () => {
     ).rejects.toThrow(/invalid payload_json/);
   });
 });
+
+describe("createTaskRewardEvent + apply — decimal SP", () => {
+  let deps;
+  beforeEach(() => { deps = makeDeps(setupDb()); });
+
+  it("SP=5.5 creates event with decimal payload and applies correct EXP to user", async () => {
+    const { event } = await createTaskRewardEvent({ taskId: "HU-DEC-1", storyPoints: 5.5 }, deps);
+
+    // payload stored correctly
+    const stored = deps.db
+      .prepare("SELECT payload_json FROM reward_events WHERE id = ?")
+      .get(event.id);
+    expect(JSON.parse(stored.payload_json)).toEqual({ storyPoints: 5.5 });
+
+    const r = await applyRewardEventToUsers({ eventId: event.id, userIds: ["u1"] }, deps);
+    expect(r.results[0]).toMatchObject({ rewarded: true });
+
+    // 5.5 EXP from L1: L1→L2 costs 1 (4.5), L2→L3 costs 2 (2.5), L3→L4 costs 3 (2.5<3 → stop)
+    expect(r.results[0].newLevel).toBe(3);
+    expect(r.results[0].newExp).toBeCloseTo(2.5);
+
+    // exp_awarded stored as 5.5 in reward_event_users
+    const reu = deps.db
+      .prepare("SELECT exp_awarded FROM reward_event_users WHERE event_id = ? AND user_id = 'u1'")
+      .get(event.id);
+    expect(reu.exp_awarded).toBeCloseTo(5.5);
+  });
+});

@@ -17,6 +17,19 @@ import { runInTransaction } from "../infrastructure/db.pg.js";
 
 export const devRouter = Router();
 
+/**
+ * Parses and validates storyPoints from a route body value.
+ * Accepts strings ("5.5") and numbers (5.5). Throws on 0, null, "abc", etc.
+ * Named export so it can be unit-tested without HTTP infrastructure.
+ */
+export function parseStoryPoints(raw) {
+  const sp = Number(raw);
+  if (!Number.isFinite(sp) || sp <= 0) {
+    throw new Error("storyPoints must be a positive number");
+  }
+  return sp;
+}
+
 devRouter.post("/reset", async (_req, res) => {
   await userRepository.reset("local");
   await rewardRepository.clear();
@@ -37,18 +50,18 @@ devRouter.post("/award-task", async (req, res) => {
   if (process.env.NODE_ENV === "production") {
     return res.status(403).json({ error: "Dev endpoint disabled in production" });
   }
-  const { taskId, storyPoints, userIds } = req.body;
+  const { taskId, userIds } = req.body;
   if (typeof taskId !== "string" || !taskId) {
     return res.status(400).json({ error: "taskId must be a non-empty string" });
   }
-  if (!Number.isInteger(storyPoints) || storyPoints <= 0) {
-    return res.status(400).json({ error: "storyPoints must be a positive integer" });
-  }
+  let sp;
+  try { sp = parseStoryPoints(req.body.storyPoints); }
+  catch (err) { return res.status(400).json({ error: err.message, code: "invalid_story_points" }); }
   if (!Array.isArray(userIds) || userIds.length === 0) {
     return res.status(400).json({ error: "userIds must be a non-empty array" });
   }
   try {
-    res.json(await awardTaskExpToUsers({ taskId, storyPoints, userIds }, awardDeps));
+    res.json(await awardTaskExpToUsers({ taskId, storyPoints: sp, userIds }, awardDeps));
   } catch (err) {
     if (err.code === "payload_mismatch") {
       return res.status(409).json({
@@ -111,19 +124,19 @@ devRouter.post("/jira/task-done", async (req, res) => {
   if (process.env.NODE_ENV === "production") {
     return res.status(403).json({ error: "Dev endpoint disabled in production" });
   }
-  const { issueKey, storyPoints, doneEventId, userIds } = req.body;
+  const { issueKey, doneEventId, userIds } = req.body;
   if (typeof issueKey !== "string" || !issueKey || !Number.isInteger(doneEventId) || doneEventId <= 0) {
     return res.status(400).json({ error: "issueKey must be a non-empty string and doneEventId must be a positive integer" });
   }
-  if (!Number.isInteger(storyPoints) || storyPoints <= 0) {
-    return res.status(400).json({ error: "storyPoints must be a positive integer" });
-  }
+  let sp;
+  try { sp = parseStoryPoints(req.body.storyPoints); }
+  catch (err) { return res.status(400).json({ error: err.message, code: "invalid_story_points" }); }
   if (!Array.isArray(userIds) || userIds.length === 0) {
     return res.status(400).json({ error: "userIds must be a non-empty array" });
   }
   try {
     const externalKey = `${issueKey}-done-${doneEventId}`;
-    res.json(await awardTaskExpToUsers({ taskId: externalKey, storyPoints, userIds }, awardDeps));
+    res.json(await awardTaskExpToUsers({ taskId: externalKey, storyPoints: sp, userIds }, awardDeps));
   } catch (err) {
     if (err.code === "payload_mismatch") {
       return res.status(409).json({
@@ -149,15 +162,16 @@ devRouter.post("/create-task-event", async (req, res) => {
   if (process.env.NODE_ENV === "production") {
     return res.status(403).json({ error: "Dev endpoint disabled in production" });
   }
-  const { taskId, storyPoints } = req.body;
+  const { taskId } = req.body;
+  const sp = Number(req.body.storyPoints);
   if (typeof taskId !== "string" || !taskId) {
     return res.status(400).json({ error: "taskId must be a non-empty string" });
   }
-  if (!Number.isInteger(storyPoints) || storyPoints <= 0) {
-    return res.status(400).json({ error: "storyPoints must be a positive integer" });
+  if (!Number.isFinite(sp) || sp <= 0) {
+    return res.status(400).json({ error: "storyPoints must be a positive number" });
   }
   try {
-    res.json(await createTaskRewardEvent({ taskId, storyPoints }, awardDeps));
+    res.json(await createTaskRewardEvent({ taskId, storyPoints: sp }, awardDeps));
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
