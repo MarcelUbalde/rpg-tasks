@@ -1,122 +1,261 @@
 # RPG Tasks
 
-A lightweight task tracker that rewards you with RPG-style level-ups for completing story-pointed tasks.
+Sistema de gamificación para equipos de desarrollo. Cada tarea completada o bug resuelto en Jira otorga recompensas RPG a los desarrolladores: EXP para subir de nivel y oro por corregir bugs.
 
 ## Stack
 
-- Node.js 22+ (uses built-in `node:sqlite` — no native compilation required)
-- Express 4
-- Vitest (unit tests)
-- Vanilla JS + Canvas (no frontend framework, no bundler)
+- **Node.js 22** — ES modules (`"type": "module"`)
+- **Express 4.18** — servidor HTTP
+- **PostgreSQL** — base de datos via `pg`
+- **Vitest 1.6** — tests unitarios
+- **Frontend** — HTML + JS vanilla (Canvas API para avatares, sin framework ni bundler)
 
-## Quickstart
+## Inicio rapido
 
 ```bash
+# 1. Instalar dependencias
 npm install
-npm test     # 5 unit tests — all pass
-npm start    # → http://localhost:3000
+
+# 2. Configurar variables de entorno
+cp .env.example .env
+# Editar .env con la conexion a tu base de datos Postgres
+
+# 3. Aplicar migraciones
+npm run migrate
+
+# 4. Arrancar el servidor
+npm start
+# o en modo watch:
+npm run dev
 ```
 
-Open http://localhost:3000 in your browser.
+Abrir http://localhost:3000 en el navegador.
 
-## Development
+## Variables de entorno
+
+| Variable | Por defecto | Descripcion |
+|---|---|---|
+| `DATABASE_URL` | — | URL de conexion Postgres (requerida) |
+| `PORT` | `3000` | Puerto del servidor |
+| `NODE_ENV` | `development` | `production` deshabilita los endpoints `/api/dev/*` |
+| `JIRA_WEBHOOK_SECRET` | — | Secret para autenticar los webhooks de Jira |
+| `JIRA_DONE_STATUS_NAME` | `Done` | Nombre del estado "terminado" en Jira |
+| `JIRA_SP_FIELD` | `customfield_10009` | Campo Jira de Story Points |
+| `JIRA_SEVERITY_FIELD` | _(vacio)_ | Campo Jira de severidad (solo para bugs) |
+| `JIRA_DEVELOPERS_FIELD` | `customfield_10819` | Campo Jira con los desarrolladores asignados |
+| `USER_MAP_JSON` | `{}` | JSON que mapea Jira accountId a RPG userId |
+
+Ejemplo de `USER_MAP_JSON`:
+```json
+{"jira-account-id-abc": "u1", "jira-account-id-xyz": "u2"}
+```
+
+## Scripts
 
 ```bash
-node --watch server/index.js   # auto-restarts on file changes
+npm start          # Arranca el servidor
+npm run dev        # Arranca con --watch (recarga automatica)
+npm test           # Ejecuta todos los tests
+npm run migrate    # Aplica las migraciones SQL pendientes
+npm run reset-db   # Reinicia la base de datos (DESTRUCTIVO)
 ```
 
-## Project Structure
+## Arquitectura
+
+El proyecto sigue un diseno DDD ligero con cuatro capas:
 
 ```
 server/
-  index.js                Entry point, Express setup
-  domain/                 Pure business logic (no side effects)
-    User.js               levelUpCost, applyExpGain, getAvatarColor
-    Task.js               Task value object
-    RewardService.js      Core reward logic — calls applyExpGain
-  application/
-    completeTask.js       Use case: duplicate check, reward, persist
-  infrastructure/
-    db.js                 SQLite setup (node:sqlite) + migrations
-    repositories/
-      userRepository.js
-      rewardRepository.js
-      logRepository.js
-  routes/                 HTTP handlers (validate input, call use case)
-    user.js
-    tasks.js
-    log.js
-public/                   Static frontend (no build step)
-  index.html
-  styles.css
-  avatar.js               Canvas avatar rendering
-  api.js                  fetch wrappers
-test/
-  completeTask.test.js    5 unit tests (zero DB dependency)
+  domain/          # Funciones puras, sin efectos secundarios
+  application/     # Casos de uso (orquestacion)
+  infrastructure/  # Repositorios Postgres, pool de conexiones
+  routes/          # Rutas Express (validacion de input, HTTP)
+  config/          # Configuracion centralizada (Jira)
+public/            # Frontend estatico (HTML, CSS, JS)
+migrations/        # Archivos SQL de migraciones
+test/              # Tests unitarios
 ```
+
+### Domain
+
+- **[User.js](server/domain/User.js)** — funciones puras para crear usuarios, ganar EXP, subir de nivel y ganar oro. La progresion de niveles usa costes Fibonacci.
+- **[Task.js](server/domain/Task.js)** — value object de tarea (id + storyPoints).
+- **[RewardService.js](server/domain/RewardService.js)** — aplica EXP por tarea completada y construye el mensaje de log.
+- **[BugReward.js](server/domain/BugReward.js)** — mapea severidad a oro: Low=1, Medium=2, High=3, Critical=5.
+
+### Application (casos de uso)
+
+| Archivo | Descripcion |
+|---|---|
+| [completeTask.js](server/application/completeTask.js) | Flujo legacy single-user: valida duplicado, aplica EXP, guarda. |
+| [awardTaskExpToUsers.js](server/application/awardTaskExpToUsers.js) | Award de EXP a multiples usuarios por una tarea (idempotente). |
+| [awardBugGoldToUsers.js](server/application/awardBugGoldToUsers.js) | Award de oro a multiples usuarios por un bug (idempotente). |
+| [applyRewardEventToUsers.js](server/application/applyRewardEventToUsers.js) | Aplica un reward_event existente a una lista de usuarios en transaccion. |
+| [createTaskRewardEvent.js](server/application/createTaskRewardEvent.js) | Crea un evento tipo TASK sin aplicarlo aun. |
+| [createBugRewardEvent.js](server/application/createBugRewardEvent.js) | Crea un evento tipo BUG sin aplicarlo aun. |
+| [jira/handleJiraWebhook.js](server/application/jira/handleJiraWebhook.js) | Orquesta el flujo completo del webhook de Jira. |
+| [jira/parseJiraDoneEvent.js](server/application/jira/parseJiraDoneEvent.js) | Parsea el body del webhook; devuelve null si no es transicion a Done. |
+| [jira/resolveRecipientUserIds.js](server/application/jira/resolveRecipientUserIds.js) | Mapea Jira accountIds a RPG userIds (prioridad: campo developers > assignee). |
+
+### Idempotencia y reward events
+
+Los awards de multi-usuario funcionan en dos fases:
+
+1. **`assertSameOrCreate`** — inserta el `reward_event` (tipo + clave externa) de forma atomica via CTE en Postgres. Si la clave ya existe con el mismo payload, devuelve el existente. Si existe con payload distinto, lanza error `payload_mismatch` (HTTP 409).
+2. **`insertIfNotExists`** — inserta la fila en `reward_event_users` solo si no existe. Si ya existe, devuelve `{ rewarded: false, reason: "duplicate" }` sin modificar al usuario.
+
+Esto garantiza que reintentar el mismo webhook de Jira es seguro.
+
+### Infrastructure
+
+- **[db.pg.js](server/infrastructure/db.pg.js)** — pool Postgres + propagacion de transacciones via `AsyncLocalStorage`. `runInTransaction(fn)` envuelve `fn` en BEGIN/COMMIT/ROLLBACK; cualquier repositorio que llame `getDb()` dentro de esa funcion usa automaticamente el mismo cliente, sin necesidad de pasarlo explicitamente.
+- **Repositorios** — cada entidad tiene un factory `.pg.factory.js` que devuelve el objeto repositorio usando `getDb()` en tiempo de query.
 
 ## API
 
+### Endpoints publicos
+
+| Metodo | Ruta | Descripcion |
+|---|---|---|
+| `GET` | `/api/user` | Estado del usuario `local` (nivel, EXP, oro, etapa de evolucion) |
+| `GET` | `/api/users` | Lista todos los usuarios |
+| `GET` | `/api/users/:userId/rewards` | Historial de rewards del usuario (`?limit=20`) |
+| `GET` | `/api/log` | Log de recompensas recientes (`?limit=10`) |
+| `POST` | `/api/tasks/complete` | Completa una tarea y otorga EXP al usuario `local` |
+| `POST` | `/api/jira/webhook` | Recibe webhooks de Jira (requiere header `X-RPG-Secret`) |
+
+### Endpoints de desarrollo (solo `NODE_ENV !== production`)
+
+| Metodo | Ruta | Body | Descripcion |
+|---|---|---|---|
+| `POST` | `/api/dev/reset` | — | Resetea el usuario `local` a L1 |
+| `POST` | `/api/dev/reset-multi` | — | Resetea `u1` y `u2` a L1 |
+| `POST` | `/api/dev/add-gold` | `{ amount }` | Anade oro al usuario `local` |
+| `POST` | `/api/dev/award-task` | `{ taskId, storyPoints, userIds }` | Otorga EXP por tarea a un array de usuarios |
+| `POST` | `/api/dev/award-bug` | `{ jiraKey, severity, userIds }` | Otorga oro por bug a un array de usuarios |
+| `POST` | `/api/dev/jira/task-done` | `{ issueKey, doneEventId, storyPoints, userIds }` | Simula un webhook de Jira Done (task) |
+| `POST` | `/api/dev/create-task-event` | `{ taskId, storyPoints }` | Crea un reward_event tipo TASK sin aplicarlo |
+| `POST` | `/api/dev/create-bug-event` | `{ jiraKey, severity }` | Crea un reward_event tipo BUG sin aplicarlo |
+| `POST` | `/api/dev/apply-event` | `{ eventId, userIds }` | Aplica un reward_event existente a un array de usuarios |
+
+### Webhook de Jira
+
 ```
-GET  /api/user                → { id, level, exp, gold }
-POST /api/tasks/complete      body: { taskId, storyPoints }
-GET  /api/log?limit=10        → array of log entries (newest first)
+POST /api/jira/webhook
+X-RPG-Secret: <JIRA_WEBHOOK_SECRET>
+Content-Type: application/json
 ```
 
-### POST /api/tasks/complete
+El webhook procesa transiciones al estado configurado en `JIRA_DONE_STATUS_NAME`:
 
-| Scenario | Response |
-|----------|----------|
-| Duplicate taskId | `{ rewarded: false, reason: "duplicate" }` |
-| storyPoints < 1 | HTTP 400 |
-| Normal reward | `{ rewarded: true, newLevel, newExp, levelsGained, logEntry }` |
+- **Issues tipo "Bug"** — otorga oro segun el campo de severidad (`JIRA_SEVERITY_FIELD`).
+- **Resto de issues** — otorga EXP segun los Story Points (`JIRA_SP_FIELD`).
 
-## EXP / Level Progression
+La clave de idempotencia es `{issueKey}-done-{changelog.id}`, lo que permite reintentos seguros.
 
-Each completed task grants EXP equal to its story points.
-Cost to advance from level N to N+1 follows Fibonacci: 1, 2, 3, 5, 8, 13 …
+**Resolucion de destinatarios:**
+1. Si el campo `JIRA_DEVELOPERS_FIELD` contiene usuarios, se usan todos.
+2. Si no, se usa el `assignee`.
+3. Los Jira accountIds se traducen a RPG userIds via `USER_MAP_JSON`. Los no mapeados se reportan en `unmappedRecipients`.
 
-| Transition | EXP cost |
-|-----------|---------|
-| 1 → 2 | 1 |
-| 2 → 3 | 2 |
-| 3 → 4 | 3 |
-| 4 → 5 | 5 |
-| 5 → 6 | 8 |
+**Codigos de error:**
 
-A single task can trigger multiple level-ups if it grants enough EXP.
+| HTTP | Codigo | Descripcion |
+|---|---|---|
+| 400 | `missing_sp` | El campo de Story Points es nulo (issue sin estimar) |
+| 400 | `invalid_sp` | El campo de SP no es un numero |
+| 400 | `sp_not_estimated` | SP <= 0 |
+| 400 | `invalid_severity` | Severidad no mapeada |
+| 400 | `severity_field_not_configured` | `JIRA_SEVERITY_FIELD` no configurado |
+| 409 | `payload_mismatch` | La clave ya existe con un payload diferente (SP o severidad cambiados) |
 
-## Avatar Colors
+## Base de datos
 
-| Level | Color |
-|-------|-------|
-| 1 | Gray |
-| 2–3 | Green |
-| 4–5 | Blue |
-| 6–7 | Purple |
-| 8+ | Gold |
+### Esquema
 
-## Architecture
+| Tabla | Descripcion |
+|---|---|
+| `users` | Usuarios con nivel, EXP (NUMERIC 12,2) y oro |
+| `rewarded_tasks` | Registro legacy de tareas recompensadas (flujo single-user) |
+| `reward_log` | Log de mensajes de recompensa |
+| `reward_events` | Eventos inmutables (TASK o BUG), clave unica por `(type, external_key)` |
+| `reward_event_users` | Relacion evento-usuario, unica por `(event_id, user_id)` |
 
-The codebase follows a light Domain-Driven Design approach:
+### Usuarios semilla
 
-- **Domain layer** (`server/domain/`) — pure functions, zero dependencies. Fully testable in isolation.
-- **Application layer** (`server/application/`) — orchestrates the use case. Repositories are injected, making unit tests trivial (pass mock objects — no real DB).
-- **Infrastructure layer** (`server/infrastructure/`) — SQLite via `node:sqlite`. Prepared statements compiled once at module load.
-- **Routes** — thin: validate input, call use case, return JSON.
+La migracion inicial crea tres usuarios: `local`, `u1`, `u2`, todos en L1 con 0 EXP y 0 oro.
 
----
+### Migraciones
 
-## Next Steps: Jira Integration
+```bash
+npm run migrate   # aplica migrations/NNN_*.sql en orden, omite los ya aplicados
+```
 
-To sync with Jira **without touching domain logic**:
+| Archivo | Descripcion |
+|---|---|
+| `001_initial_schema.sql` | Esquema completo + usuarios semilla |
+| `002_exp_decimal.sql` | Cambia `exp` de INTEGER a NUMERIC(12,2) para soportar SP decimales |
 
-1. Add `server/infrastructure/jiraClient.js` — wraps Jira REST API calls
-2. Add a polling service `server/infrastructure/jiraPoller.js` that:
-   - Queries Jira for recently resolved issues (status = Done)
-   - Calls `completeTask(useCase)` with the Jira issue key as `taskId` and its story points
-   - The duplicate-check in the use case prevents double-rewarding on re-poll
-3. For webhooks: add `POST /api/jira/webhook` route that maps the Jira payload and calls the same `completeTask` use case
-4. `server/domain/User.js` and `server/domain/RewardService.js` need **zero changes**
+## Sistema de progresion
 
-The key design decision that enables this: `completeTask` receives repos as parameters, so any caller (HTTP route, poller, webhook handler) can invoke the same use case with the same business rules.
+### EXP y niveles (Fibonacci)
+
+| Transicion | Coste EXP |
+|---|---|
+| L1 -> L2 | 1 |
+| L2 -> L3 | 2 |
+| L3 -> L4 | 3 |
+| L4 -> L5 | 5 |
+| L5 -> L6 | 8 |
+| L6 -> L7 | 13 |
+| ... | ... |
+
+Una sola tarea puede provocar multiples subidas de nivel si el EXP acumulado es suficiente.
+
+### Oro por bugs
+
+| Severidad | Oro |
+|---|---|
+| Low | 1 |
+| Medium | 2 |
+| High | 3 |
+| Critical | 5 |
+
+### Avatar
+
+El avatar se dibuja en un `<canvas>` y cambia de color segun el nivel:
+
+| Nivel | Color |
+|---|---|
+| 1 | Gris |
+| 2-3 | Verde |
+| 4-5 | Azul |
+| 6-7 | Morado |
+| 8+ | Dorado |
+
+La etapa de evolucion (0-5) cambia cada 2 niveles, comenzando en L1.
+
+## Mensajes de log
+
+| Evento | Formato |
+|---|---|
+| Subida de nivel | `+N nivel(es) — TASK-ID (X SP)` |
+| Solo EXP (sin level-up) | `+X EXP — TASK-ID (X SP)` |
+
+## Tests
+
+```bash
+npm test
+```
+
+| Archivo | Que prueba |
+|---|---|
+| `test/completeTask.test.js` | Flujo completo single-user con repos in-memory |
+| `test/awardMultiUser.test.js` | Award de EXP/oro a multiples usuarios, idempotencia |
+| `test/splitEventApplication.test.js` | Separacion create-event / apply-event |
+| `test/jiraWebhook.test.js` | Parsing y orquestacion del webhook de Jira |
+| `test/devRouteValidation.test.js` | Validacion de inputs en rutas dev |
+| `test/userIds.test.js` | Deduplicacion de userIds |
+| `test/pgCoerce.test.js` | Coercion de NUMERIC de Postgres a numero JS |
+
+Los tests de dominio y aplicacion usan repos in-memory sin dependencia de base de datos.
