@@ -21,6 +21,7 @@ function setupDb() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       type TEXT NOT NULL, external_key TEXT NOT NULL,
       payload_json TEXT NOT NULL, created_at TEXT NOT NULL,
+      issue_key TEXT, summary TEXT, story_points REAL, severity TEXT,
       UNIQUE(type, external_key)
     );
     CREATE TABLE reward_event_users (
@@ -35,6 +36,7 @@ function setupDb() {
   const now = new Date().toISOString();
   const ins = db.prepare("INSERT INTO users (id, level, exp, gold, updated_at) VALUES (?, ?, ?, ?, ?)");
   ins.run("u1", 1, 0, 0, now);
+  ins.run("u2", 1, 0, 0, now);
   return db;
 }
 
@@ -67,18 +69,39 @@ const testConfig = {
   spField: "customfield_10009",
   severityField: "",
   developersField: "customfield_10819",
+  qaField: "",
   userMap: { "jira-1": "u1" },
 };
 
 // Helper: builds a minimal Jira issue_updated body for a TASK Done transition.
-function makeTaskBody({ changelogId = "ch-1", status = "Done", issueKey = "HU-1", storyPoints = 3, accountId = "jira-1" } = {}) {
+function makeTaskBody({ changelogId = "ch-1", status = "Done", issueKey = "HU-1", storyPoints = 3, accountId = "jira-1", qaAccountId = null } = {}) {
   return {
     issue: {
       key: issueKey,
       fields: {
         issuetype: { name: "Story" },
         customfield_10009: storyPoints,
-        assignee: { accountId },
+        customfield_10819: [{ accountId }],
+        ...(qaAccountId ? { customfield_10818: { accountId: qaAccountId } } : {}),
+      },
+    },
+    changelog: {
+      id: changelogId,
+      items: [{ field: "status", fromString: "In Progress", toString: status }],
+    },
+  };
+}
+
+// Helper: builds a minimal Jira body for a BUG Done transition.
+function makeBugBody({ changelogId = "ch-bug-1", status = "Done", issueKey = "BUG-1", severity = "High", severityField = "customfield_10800", accountId = "jira-1", qaAccountId = null } = {}) {
+  return {
+    issue: {
+      key: issueKey,
+      fields: {
+        issuetype: { name: "Bug" },
+        [severityField]: severity,
+        customfield_10819: [{ accountId }],
+        ...(qaAccountId ? { customfield_10818: { accountId: qaAccountId } } : {}),
       },
     },
     changelog: {
@@ -136,5 +159,85 @@ describe("jiraWebhook", () => {
     const body2 = makeTaskBody({ changelogId: "ch-99", storyPoints: 5 });
     await expect(handleJiraWebhook(body2, testConfig, deps))
       .rejects.toMatchObject({ code: "payload_mismatch" });
+  });
+
+  it("qaField empty — solo developers reciben EXP (retrocompatibilidad)", async () => {
+    // qaAccountId presente en el body pero qaField no configurado → debe ignorarse
+    const body = makeTaskBody({ changelogId: "ch-qa-off", storyPoints: 2, accountId: "jira-1", qaAccountId: "jira-qa" });
+    const result = await handleJiraWebhook(body, testConfig, deps); // qaField: ""
+
+    expect(result.recipientsResolved).toBe(1);
+    expect(result.results[0]).toMatchObject({ userId: "u1", rewarded: true });
+  });
+
+  it("QA + developer distintos — ambos reciben EXP", async () => {
+    const config = { ...testConfig, qaField: "customfield_10818", userMap: { "jira-1": "u1", "jira-qa": "u2" } };
+    const body = makeTaskBody({ changelogId: "ch-qa-1", storyPoints: 3, accountId: "jira-1", qaAccountId: "jira-qa" });
+    const result = await handleJiraWebhook(body, config, deps);
+
+    expect(result.recipientsResolved).toBe(2);
+    const u1 = result.results.find((r) => r.userId === "u1");
+    const u2 = result.results.find((r) => r.userId === "u2");
+    expect(u1).toMatchObject({ rewarded: true });
+    expect(u2).toMatchObject({ rewarded: true });
+  });
+
+  it("QA == developer (mismo accountId) — EXP otorgada una sola vez", async () => {
+    const config = { ...testConfig, qaField: "customfield_10818", userMap: { "jira-1": "u1" } };
+    const body = makeTaskBody({ changelogId: "ch-qa-dup", storyPoints: 3, accountId: "jira-1", qaAccountId: "jira-1" });
+    const result = await handleJiraWebhook(body, config, deps);
+
+    expect(result.recipientsResolved).toBe(1);
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0]).toMatchObject({ userId: "u1", rewarded: true });
+  });
+
+  it("QA presente pero no mapeado → en unmappedRecipients", async () => {
+    const config = { ...testConfig, qaField: "customfield_10818", userMap: { "jira-1": "u1" } };
+    const body = makeTaskBody({ changelogId: "ch-qa-unmap", storyPoints: 2, accountId: "jira-1", qaAccountId: "jira-unmapped" });
+    const result = await handleJiraWebhook(body, config, deps);
+
+    expect(result.recipientsResolved).toBe(1);
+    expect(result.unmappedRecipients).toContain("jira-unmapped");
+  });
+
+  it("developers vacio + QA vacio → skipped (assignee no es fuente)", async () => {
+    const config = { ...testConfig, qaField: "customfield_10818" };
+    const body = {
+      issue: {
+        key: "HU-NO-PARTICIPANTS",
+        fields: {
+          issuetype: { name: "Story" },
+          customfield_10009: 3,
+          assignee: { accountId: "jira-1" }, // presente pero ya no contribuye
+        },
+      },
+      changelog: {
+        id: "ch-no-part",
+        items: [{ field: "status", fromString: "In Progress", toString: "Done" }],
+      },
+    };
+    const result = await handleJiraWebhook(body, config, deps);
+
+    expect(result.skipped).toBe(true);
+    expect(result.reason).toBe("no_recipients");
+  });
+
+  it("BUG Done con developer + QA — ambos reciben oro", async () => {
+    const config = {
+      ...testConfig,
+      severityField: "customfield_10800",
+      qaField: "customfield_10818",
+      userMap: { "jira-1": "u1", "jira-qa": "u2" },
+    };
+    const body = makeBugBody({ changelogId: "ch-bug-qa", severity: "High", accountId: "jira-1", qaAccountId: "jira-qa" });
+    const result = await handleJiraWebhook(body, config, deps);
+
+    expect(result.recipientsResolved).toBe(2);
+    const u1 = result.results.find((r) => r.userId === "u1");
+    const u2 = result.results.find((r) => r.userId === "u2");
+    // High severity = 3 gold
+    expect(u1).toMatchObject({ rewarded: true, goldAwarded: 3 });
+    expect(u2).toMatchObject({ rewarded: true, goldAwarded: 3 });
   });
 });

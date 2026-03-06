@@ -23,24 +23,34 @@ function mapRow(row) {
     external_key: row.external_key,
     payload_json: row.payload_json,
     created_at: row.created_at,
+    issue_key: row.issue_key ?? null,
+    summary: row.summary ?? null,
+    story_points: row.story_points ?? null,
+    severity: row.severity ?? null,
   };
 }
+
+const META_COLS = "id, type, external_key, payload_json, created_at, issue_key, summary, story_points, severity";
 
 export function makeRewardEventRepositoryPg() {
   return {
     // Two-statement non-atomic create. Acceptable for the create-event endpoints
     // where racing creates with the same payload are idempotent.
-    async findOrCreateEvent({ type, externalKey, payload }) {
+    async findOrCreateEvent({ type, externalKey, payload, meta }) {
       const db = getDb();
+      const issueKey = meta?.issueKey ?? null;
+      const summary  = meta?.summary  ?? null;
+      const storyPts = meta?.storyPoints ?? payload?.storyPoints ?? null;
+      const sev      = meta?.severity   ?? payload?.severity    ?? null;
       await db.query(
-        `INSERT INTO reward_events (type, external_key, payload_json, created_at)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO reward_events (type, external_key, payload_json, created_at, issue_key, summary, story_points, severity)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          ON CONFLICT (type, external_key) DO NOTHING`,
-        [type, externalKey, JSON.stringify(payload), new Date().toISOString()]
+        [type, externalKey, JSON.stringify(payload), new Date().toISOString(),
+         issueKey, summary, storyPts, sev]
       );
       const { rows } = await db.query(
-        `SELECT id, type, external_key, payload_json, created_at
-         FROM reward_events WHERE type = $1 AND external_key = $2`,
+        `SELECT ${META_COLS} FROM reward_events WHERE type = $1 AND external_key = $2`,
         [type, externalKey]
       );
       return mapRow(rows[0]);
@@ -50,22 +60,28 @@ export function makeRewardEventRepositoryPg() {
     // ON CONFLICT DO NOTHING → ins RETURNING is empty for an existing row.
     // UNION ALL branch reads the existing row only when ins is empty.
     // Result is always exactly 1 row.
-    async assertSameOrCreate({ type, externalKey, payload }) {
+    async assertSameOrCreate({ type, externalKey, payload, meta }) {
       const db = getDb();
+      const issueKey = meta?.issueKey ?? null;
+      const summary  = meta?.summary  ?? null;
+      const storyPts = meta?.storyPoints ?? payload?.storyPoints ?? null;
+      const sev      = meta?.severity   ?? payload?.severity    ?? null;
+
       const { rows } = await db.query(
         `WITH ins AS (
-           INSERT INTO reward_events (type, external_key, payload_json, created_at)
-           VALUES ($1, $2, $3, $4)
+           INSERT INTO reward_events (type, external_key, payload_json, created_at, issue_key, summary, story_points, severity)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
            ON CONFLICT (type, external_key) DO NOTHING
-           RETURNING id, type, external_key, payload_json, created_at
+           RETURNING ${META_COLS}
          )
-         SELECT id, type, external_key, payload_json, created_at FROM ins
+         SELECT ${META_COLS} FROM ins
          UNION ALL
-         SELECT id, type, external_key, payload_json, created_at
+         SELECT ${META_COLS}
            FROM reward_events
           WHERE type = $1 AND external_key = $2
             AND NOT EXISTS (SELECT 1 FROM ins)`,
-        [type, externalKey, JSON.stringify(payload), new Date().toISOString()]
+        [type, externalKey, JSON.stringify(payload), new Date().toISOString(),
+         issueKey, summary, storyPts, sev]
       );
 
       const row = rows[0];
@@ -96,8 +112,7 @@ export function makeRewardEventRepositoryPg() {
     async findByTypeAndKey(type, externalKey) {
       const db = getDb();
       const { rows } = await db.query(
-        `SELECT id, type, external_key, payload_json, created_at
-         FROM reward_events WHERE type = $1 AND external_key = $2`,
+        `SELECT ${META_COLS} FROM reward_events WHERE type = $1 AND external_key = $2`,
         [type, externalKey]
       );
       return mapRow(rows[0] ?? null);
@@ -106,8 +121,7 @@ export function makeRewardEventRepositoryPg() {
     async findById(eventId) {
       const db = getDb();
       const { rows } = await db.query(
-        `SELECT id, type, external_key, payload_json, created_at
-         FROM reward_events WHERE id = $1`,
+        `SELECT ${META_COLS} FROM reward_events WHERE id = $1`,
         [eventId]
       );
       return mapRow(rows[0] ?? null);

@@ -8,13 +8,14 @@ import { applyRewardEventToUsers } from "./applyRewardEventToUsers.js";
 import { goldForSeverity } from "../domain/BugReward.js";
 import { deduplicateUserIds } from "./userIds.js";
 
-export async function awardBugGoldToUsers({ jiraKey, severity, userIds }, deps) {
+export async function awardBugGoldToUsers({ jiraKey, severity, userIds, meta }, deps) {
   goldForSeverity(severity); // throws on invalid severity
   const uniqueIds = deduplicateUserIds(userIds);
   const raw = await deps.rewardEventRepo.assertSameOrCreate({
     type: "BUG",
     externalKey: jiraKey,
     payload: { severity },
+    meta,
   });
   return applyRewardEventToUsers({ eventId: raw.id, userIds: uniqueIds }, deps);
 }

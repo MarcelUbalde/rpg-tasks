@@ -7,7 +7,7 @@
 import { applyRewardEventToUsers } from "./applyRewardEventToUsers.js";
 import { deduplicateUserIds } from "./userIds.js";
 
-export async function awardTaskExpToUsers({ taskId, storyPoints, userIds }, deps) {
+export async function awardTaskExpToUsers({ taskId, storyPoints, userIds, meta }, deps) {
   if (!Number.isFinite(storyPoints) || storyPoints <= 0) {
     throw new Error("storyPoints must be a positive number");
   }
@@ -16,6 +16,7 @@ export async function awardTaskExpToUsers({ taskId, storyPoints, userIds }, deps
     type: "TASK",
     externalKey: taskId,
     payload: { storyPoints },
+    meta,
   });
   return applyRewardEventToUsers({ eventId: raw.id, userIds: uniqueIds }, deps);
 }

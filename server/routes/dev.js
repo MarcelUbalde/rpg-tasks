@@ -9,11 +9,11 @@ import { applyGoldGain } from "../domain/User.js";
 import { awardTaskExpToUsers } from "../application/awardTaskExpToUsers.js";
 import { awardBugGoldToUsers } from "../application/awardBugGoldToUsers.js";
 import { createTaskRewardEvent } from "../application/createTaskRewardEvent.js";
-import { createBugRewardEvent }  from "../application/createBugRewardEvent.js";
+import { createBugRewardEvent } from "../application/createBugRewardEvent.js";
 import { applyRewardEventToUsers } from "../application/applyRewardEventToUsers.js";
 import { rewardEventRepository } from "../infrastructure/repositories/rewardEventRepository.js";
 import { rewardEventUserRepository } from "../infrastructure/repositories/rewardEventUserRepository.js";
-import { runInTransaction } from "../infrastructure/db.pg.js";
+import { runInTransaction, getDb } from "../infrastructure/db.pg.js";
 
 export const devRouter = Router();
 
@@ -209,10 +209,11 @@ devRouter.post("/reset-multi", async (_req, res) => {
     return res.status(403).json({ error: "Dev endpoint disabled in production" });
   }
   await runInTransaction(async () => {
-    for (const uid of ["u1", "u2"]) {
+    for (const uid of ["u1", "u2", "u3"]) {
       await userRepository.reset(uid);
     }
-    await rewardEventUserRepository.clearForUsers(["u1", "u2"]);
+    await rewardEventUserRepository.clearForUsers(["u1", "u2", "u3"]);
+    await getDb().query("DELETE FROM reward_events");
   });
   res.json({ ok: true });
 });

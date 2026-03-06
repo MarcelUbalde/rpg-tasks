@@ -14,30 +14,34 @@ function parseAndCompare(expected, storedPayloadJson) {
 
 export function makeRewardEventRepository(db) {
   const insertIgnoreStmt = db.prepare(
-    `INSERT OR IGNORE INTO reward_events (type, external_key, payload_json, created_at)
-     VALUES (@type, @externalKey, @payloadJson, @createdAt)`
+    `INSERT OR IGNORE INTO reward_events (type, external_key, payload_json, created_at, issue_key, summary, story_points, severity)
+     VALUES (@type, @externalKey, @payloadJson, @createdAt, @issueKey, @summary, @storyPoints, @severity)`
   );
   const findStmt = db.prepare(
-    `SELECT id, type, external_key, payload_json, created_at
+    `SELECT id, type, external_key, payload_json, created_at, issue_key, summary, story_points, severity
      FROM reward_events WHERE type = @type AND external_key = @externalKey`
   );
   const findByIdStmt = db.prepare(
-    `SELECT id, type, external_key, payload_json, created_at
+    `SELECT id, type, external_key, payload_json, created_at, issue_key, summary, story_points, severity
      FROM reward_events WHERE id = @id`
   );
   const upsertStmt = db.prepare(
-    `INSERT INTO reward_events (type, external_key, payload_json, created_at)
-     VALUES (@type, @externalKey, @payloadJson, @createdAt)
+    `INSERT INTO reward_events (type, external_key, payload_json, created_at, issue_key, summary, story_points, severity)
+     VALUES (@type, @externalKey, @payloadJson, @createdAt, @issueKey, @summary, @storyPoints, @severity)
      ON CONFLICT(type, external_key) DO UPDATE SET payload_json = excluded.payload_json`
   );
   return {
     // Immutable-by-key: INSERT OR IGNORE — if (type, key) exists, returns existing row unchanged (Create event flow).
-    findOrCreateEvent({ type, externalKey, payload }) {
+    findOrCreateEvent({ type, externalKey, payload, meta }) {
       insertIgnoreStmt.run({
         type,
         externalKey,
         payloadJson: JSON.stringify(payload),
         createdAt: new Date().toISOString(),
+        issueKey: meta?.issueKey ?? null,
+        summary: meta?.summary ?? null,
+        storyPoints: meta?.storyPoints ?? payload?.storyPoints ?? null,
+        severity: meta?.severity ?? payload?.severity ?? null,
       });
       return findStmt.get({ type, externalKey });
     },
@@ -48,11 +52,15 @@ export function makeRewardEventRepository(db) {
       return findByIdStmt.get({ id: eventId }) ?? null;
     },
     // Strict create: create if new; return row if payload matches; throw payload_mismatch if different. CC=3.
-    assertSameOrCreate({ type, externalKey, payload }) {
+    assertSameOrCreate({ type, externalKey, payload, meta }) {
       insertIgnoreStmt.run({
         type, externalKey,
         payloadJson: JSON.stringify(payload),
         createdAt: new Date().toISOString(),
+        issueKey: meta?.issueKey ?? null,
+        summary: meta?.summary ?? null,
+        storyPoints: meta?.storyPoints ?? payload?.storyPoints ?? null,
+        severity: meta?.severity ?? payload?.severity ?? null,
       });
       const row = findStmt.get({ type, externalKey });
       if (!row) {
@@ -81,6 +89,10 @@ export function makeRewardEventRepository(db) {
         externalKey,
         payloadJson: JSON.stringify(payload),
         createdAt: new Date().toISOString(),
+        issueKey: null,
+        summary: null,
+        storyPoints: payload?.storyPoints ?? null,
+        severity: payload?.severity ?? null,
       });
       return findStmt.get({ type, externalKey });
     },

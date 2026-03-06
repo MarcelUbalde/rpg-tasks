@@ -18,5 +18,6 @@ export const jiraConfig = {
   spField:         process.env.JIRA_SP_FIELD ?? "customfield_10009",
   severityField:   process.env.JIRA_SEVERITY_FIELD ?? "",
   developersField: process.env.JIRA_DEVELOPERS_FIELD ?? "customfield_10819",
+  qaField:         process.env.JIRA_QA_FIELD ?? "",
   userMap:         parseUserMap(process.env.USER_MAP_JSON),
 };

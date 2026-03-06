@@ -1,0 +1,25 @@
+{
+  "issue": {
+    "key": "DV-6064",
+    "fields": {
+      "issuetype": { "name": "Story" },
+      "customfield_10009": 5,
+      "customfield_10819": [
+        { "accountId": "jira-dev-1" },
+        { "accountId": "jira-dev-2" }
+      ],
+      "customfield_10818": {
+        "accountId": "jira-qa-1"
+      }
+    }
+  },
+  "changelog": {
+    "id": "12345",
+    "items": [
+      {
+        "field": "status",
+        "toString": "Done"
+      }
+    ]
+  }
+}

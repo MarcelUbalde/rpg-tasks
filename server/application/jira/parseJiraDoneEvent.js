@@ -48,11 +48,13 @@ export function parseJiraDoneEvent(body, { doneName, spField, severityField }) {
   const isBug = fields?.issuetype?.name === "Bug";
   const externalKey = `${issueKey}-done-${changelogId}`;
 
+  const summary = body?.issue?.fields?.summary ?? null;
+
   if (isBug) {
     const severity = extractSeverity(fields, severityField);
-    return { type: "BUG", externalKey, payload: { severity }, issueKey };
+    return { type: "BUG", externalKey, payload: { severity }, issueKey, summary };
   }
 
   const storyPoints = extractStoryPoints(fields, spField);
-  return { type: "TASK", externalKey, payload: { storyPoints }, issueKey };
+  return { type: "TASK", externalKey, payload: { storyPoints }, issueKey, summary };
 }

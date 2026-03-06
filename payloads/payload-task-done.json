@@ -1,0 +1,24 @@
+{
+  "issue": {
+    "key": "DV-TEST-1",
+    "fields": {
+      "issuetype": { "name": "Story" },
+      "summary": "Prueba manual webhook TASK",
+      "customfield_10009": 5,
+      "customfield_10819": [
+        { "accountId": "jira-dev-1", "displayName": "Developer 1" },
+        { "accountId": "jira-dev-2", "displayName": "Developer 2" }
+      ],
+      "customfield_10818": {
+        "accountId": "jira-qa-1",
+        "displayName": "QA 1"
+      }
+    }
+  },
+  "changelog": {
+    "id": "ch-test-task-2",
+    "items": [
+      { "field": "status", "fromString": "In Progress", "toString": "Done" }
+    ]
+  }
+}

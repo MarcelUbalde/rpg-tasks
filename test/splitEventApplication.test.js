@@ -22,6 +22,7 @@ function setupDb() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       type TEXT NOT NULL, external_key TEXT NOT NULL,
       payload_json TEXT NOT NULL, created_at TEXT NOT NULL,
+      issue_key TEXT, summary TEXT, story_points REAL, severity TEXT,
       UNIQUE(type, external_key)
     );
     CREATE TABLE reward_event_users (

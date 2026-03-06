@@ -6,6 +6,10 @@ export function makeRewardHistoryRepository(db) {
     SELECT re.type,
            re.external_key,
            re.payload_json,
+           re.issue_key,
+           re.summary,
+           re.story_points,
+           re.severity,
            reu.exp_awarded,
            reu.gold_awarded,
            reu.created_at
@@ -28,6 +32,10 @@ export function makeRewardHistoryRepository(db) {
           goldAwarded: row.gold_awarded,
           createdAt: row.created_at,
           payload,
+          issueKey: row.issue_key ?? null,
+          summary: row.summary ?? null,
+          storyPoints: row.story_points ?? null,
+          severity: row.severity ?? null,
         };
       });
     },

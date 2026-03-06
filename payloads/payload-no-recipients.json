@@ -1,0 +1,17 @@
+{
+  "issue": {
+    "key": "DV-TEST-NO-REC",
+    "fields": {
+      "issuetype": { "name": "Story" },
+      "summary": "Prueba sin recipients",
+      "customfield_10009": 3,
+      "assignee": { "accountId": "jira-dev-1" }
+    }
+  },
+  "changelog": {
+    "id": "ch-test-no-rec-1",
+    "items": [
+      { "field": "status", "fromString": "In Progress", "toString": "Done" }
+    ]
+  }
+}

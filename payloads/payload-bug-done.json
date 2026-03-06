@@ -1,0 +1,23 @@
+{
+  "issue": {
+    "key": "BUG-TEST-1",
+    "fields": {
+      "issuetype": { "name": "Bug" },
+      "summary": "Prueba manual webhook BUG",
+      "customfield_10800": "High",
+      "customfield_10819": [
+        { "accountId": "jira-dev-1", "displayName": "Developer 1" }
+      ],
+      "customfield_10818": {
+        "accountId": "jira-qa-1",
+        "displayName": "QA 1"
+      }
+    }
+  },
+  "changelog": {
+    "id": "ch-test-bug-2",
+    "items": [
+      { "field": "status", "fromString": "In Progress", "toString": "Done" }
+    ]
+  }
+}
