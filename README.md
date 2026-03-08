@@ -119,17 +119,49 @@ Esto garantiza que reintentar el mismo webhook de Jira es seguro.
 |---|---|---|
 | `GET` | `/api/user` | Estado del usuario `local` (nivel, EXP, oro, etapa de evolucion) |
 | `GET` | `/api/users` | Lista todos los usuarios |
-| `GET` | `/api/users/:userId/rewards` | Historial de rewards del usuario (`?limit=20`) |
-| `GET` | `/api/log` | Log de recompensas recientes (`?limit=10`) |
+| `GET` | `/api/users/:userId/rewards` | Historial de rewards del usuario (`?limit=20`). Incluye issueKey, summary, storyPoints y severity. |
+| `GET` | `/api/leaderboard` | Ranking de usuarios ordenado por nivel, EXP y oro. Excluye el usuario `local`. |
+| `GET` | `/api/activity` | Feed global de actividad del equipo (`?limit=50`, max 200). Muestra todas las recompensas concedidas con contexto Jira. |
+| `GET` | `/api/log` | Log de recompensas recientes del usuario `local` (`?limit=10`) |
 | `POST` | `/api/tasks/complete` | Completa una tarea y otorga EXP al usuario `local` |
 | `POST` | `/api/jira/webhook` | Recibe webhooks de Jira (requiere header `X-RPG-Secret`) |
+
+#### Respuesta de `/api/leaderboard`
+
+```json
+{
+  "leaderboard": [
+    { "rank": 1, "userId": "u1", "level": 5, "exp": 8, "gold": 12 }
+  ]
+}
+```
+
+#### Respuesta de `/api/activity`
+
+```json
+{
+  "items": [
+    {
+      "createdAt": "2026-03-08T10:00:00.000Z",
+      "type": "TASK",
+      "issueKey": "HU-123",
+      "summary": "Implementar login",
+      "storyPoints": 3,
+      "severity": null,
+      "userId": "u1",
+      "expAwarded": 3,
+      "goldAwarded": 0
+    }
+  ]
+}
+```
 
 ### Endpoints de desarrollo (solo `NODE_ENV !== production`)
 
 | Metodo | Ruta | Body | Descripcion |
 |---|---|---|---|
 | `POST` | `/api/dev/reset` | — | Resetea el usuario `local` a L1 |
-| `POST` | `/api/dev/reset-multi` | — | Resetea `u1` y `u2` a L1 |
+| `POST` | `/api/dev/reset-multi` | — | Resetea `u1`, `u2` y `u3` a L1 y limpia `reward_event_users` |
 | `POST` | `/api/dev/add-gold` | `{ amount }` | Anade oro al usuario `local` |
 | `POST` | `/api/dev/award-task` | `{ taskId, storyPoints, userIds }` | Otorga EXP por tarea a un array de usuarios |
 | `POST` | `/api/dev/award-bug` | `{ jiraKey, severity, userIds }` | Otorga oro por bug a un array de usuarios |
@@ -178,12 +210,12 @@ La clave de idempotencia es `{issueKey}-done-{changelog.id}`, lo que permite rei
 | `users` | Usuarios con nivel, EXP (NUMERIC 12,2) y oro |
 | `rewarded_tasks` | Registro legacy de tareas recompensadas (flujo single-user) |
 | `reward_log` | Log de mensajes de recompensa |
-| `reward_events` | Eventos inmutables (TASK o BUG), clave unica por `(type, external_key)` |
+| `reward_events` | Eventos inmutables (TASK o BUG), clave unica por `(type, external_key)`. Incluye metadatos Jira: `issue_key`, `summary`, `story_points`, `severity`. |
 | `reward_event_users` | Relacion evento-usuario, unica por `(event_id, user_id)` |
 
 ### Usuarios semilla
 
-La migracion inicial crea tres usuarios: `local`, `u1`, `u2`, todos en L1 con 0 EXP y 0 oro.
+La migracion inicial crea cuatro usuarios: `local`, `u1`, `u2`, `u3`, todos en L1 con 0 EXP y 0 oro.
 
 ### Migraciones
 
@@ -193,8 +225,10 @@ npm run migrate   # aplica migrations/NNN_*.sql en orden, omite los ya aplicados
 
 | Archivo | Descripcion |
 |---|---|
-| `001_initial_schema.sql` | Esquema completo + usuarios semilla |
+| `001_initial_schema.sql` | Esquema completo + usuarios semilla (`local`, `u1`, `u2`) |
 | `002_exp_decimal.sql` | Cambia `exp` de INTEGER a NUMERIC(12,2) para soportar SP decimales |
+| `003_seed_u3.sql` | Anade el usuario `u3` |
+| `004_reward_event_metadata.sql` | Anade columnas de metadatos Jira a `reward_events` (`issue_key`, `summary`, `story_points`, `severity`) |
 
 ## Sistema de progresion
 
@@ -253,9 +287,12 @@ npm test
 | `test/completeTask.test.js` | Flujo completo single-user con repos in-memory |
 | `test/awardMultiUser.test.js` | Award de EXP/oro a multiples usuarios, idempotencia |
 | `test/splitEventApplication.test.js` | Separacion create-event / apply-event |
+| `test/rewardHistory.test.js` | Historial de rewards por usuario |
 | `test/jiraWebhook.test.js` | Parsing y orquestacion del webhook de Jira |
 | `test/devRouteValidation.test.js` | Validacion de inputs en rutas dev |
 | `test/userIds.test.js` | Deduplicacion de userIds |
 | `test/pgCoerce.test.js` | Coercion de NUMERIC de Postgres a numero JS |
+| `test/leaderboard.test.js` | Funcion pura `buildLeaderboard()` — ranking y asignacion de posiciones |
+| `test/activity.test.js` | Funcion pura `mapActivityRow()` — mapeo y coercion de filas del feed de actividad |
 
 Los tests de dominio y aplicacion usan repos in-memory sin dependencia de base de datos.

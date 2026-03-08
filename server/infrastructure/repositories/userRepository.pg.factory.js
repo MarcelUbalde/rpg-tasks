@@ -49,5 +49,15 @@ export function makeUserRepositoryPg() {
         [new Date().toISOString(), id]
       );
     },
+
+    async findLeaderboard() {
+      const { rows } = await getDb().query(
+        `SELECT id, level, exp, gold
+         FROM users
+         WHERE id != 'local'
+         ORDER BY level DESC, exp DESC, gold DESC, id ASC`
+      );
+      return rows.map(mapUser);
+    },
   };
 }

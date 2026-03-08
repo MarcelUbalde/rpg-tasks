@@ -14,6 +14,8 @@ import { tasksRouter } from "./routes/tasks.js";
 import { logRouter } from "./routes/log.js";
 import { usersRouter } from "./routes/users.js";
 import { userRewardsRouter } from "./routes/userRewards.js";
+import { leaderboardRouter } from "./routes/leaderboard.js";
+import { activityRouter } from "./routes/activity.js";
 import { devRouter } from "./routes/dev.js";
 import { jiraRouter } from "./routes/jira.js";
 
@@ -30,6 +32,8 @@ app.use(express.static(join(__dirname, "../public")));
 app.use("/api/user", userRouter);
 app.use("/api/users", usersRouter);
 app.use("/api/users", userRewardsRouter);
+app.use("/api/leaderboard", leaderboardRouter);
+app.use("/api/activity", activityRouter);
 app.use("/api/tasks", tasksRouter);
 app.use("/api/log", logRouter);
 

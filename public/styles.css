@@ -160,3 +160,54 @@ h1 {
 
 .entry-msg  { color: var(--text); }
 .entry-time { color: var(--muted); font-size: 0.72rem; white-space: nowrap; }
+
+#leaderboard-table {
+  width: 100%;
+  max-width: 420px;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  margin-bottom: 1.5rem;
+}
+
+#leaderboard-table th,
+#leaderboard-table td {
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+#leaderboard-table th {
+  color: var(--muted);
+  background: var(--surface);
+  letter-spacing: 0.05em;
+}
+
+#leaderboard-table td:first-child { color: var(--accent); font-weight: bold; }
+
+#activity-table {
+  width: 100%;
+  max-width: 720px;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  margin-bottom: 1.5rem;
+}
+
+#activity-table th,
+#activity-table td {
+  padding: 0.3rem 0.55rem;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+#activity-table th {
+  color: var(--muted);
+  background: var(--surface);
+  letter-spacing: 0.05em;
+}
+
+#activity-table td:nth-child(4) {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

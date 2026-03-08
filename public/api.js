@@ -136,3 +136,15 @@ export async function applyEvent(eventId, userIds) {
   if (!res.ok) throw new Error(`applyEvent failed: ${res.status}`);
   return res.json();
 }
+
+export async function getLeaderboard() {
+  const res = await fetch(`${BASE}/leaderboard`);
+  if (!res.ok) throw new Error(`getLeaderboard failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getActivity(limit = 50) {
+  const res = await fetch(`${BASE}/activity?limit=${limit}`);
+  if (!res.ok) throw new Error(`getActivity failed: ${res.status}`);
+  return res.json();
+}

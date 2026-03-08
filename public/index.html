@@ -58,9 +58,21 @@
   <p class="log-header">HISTORIAL (<span id="history-user-label">—</span>)</p>
   <ul id="history-list"></ul>
 
+  <p class="log-header">LEADERBOARD</p>
+  <table id="leaderboard-table">
+    <thead><tr><th>#</th><th>Usuario</th><th>Nivel</th><th>EXP</th><th>Oro</th></tr></thead>
+    <tbody id="leaderboard-body"></tbody>
+  </table>
+
+  <p class="log-header">ACTIVIDAD RECIENTE</p>
+  <table id="activity-table">
+    <thead><tr><th>Fecha</th><th>Tipo</th><th>Issue</th><th>Summary</th><th>SP/Sev</th><th>Usuario</th><th>Recompensa</th></tr></thead>
+    <tbody id="activity-body"></tbody>
+  </table>
+
   <script type="module">
     import { drawAvatar } from "./avatar.js";
-    import { completeTask, getLog, devReset, addGold, getUsers, awardTask, awardBug, resetMulti, getUserRewards, createTaskEvent, createBugEvent, applyEvent, simulateJiraDone } from "./api.js";
+    import { completeTask, getLog, devReset, addGold, getUsers, awardTask, awardBug, resetMulti, getUserRewards, createTaskEvent, createBugEvent, applyEvent, simulateJiraDone, getLeaderboard, getActivity } from "./api.js";
 
     let taskSeq = 0;
     let bugSeq = 0;
@@ -311,11 +323,38 @@
       return li;
     }
 
+    async function refreshLeaderboard() {
+      const leaderboardBody = document.getElementById("leaderboard-body");
+      const { leaderboard } = await getLeaderboard();
+      leaderboardBody.innerHTML = "";
+      leaderboard.forEach((entry) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${entry.rank}</td><td>${entry.userId}</td><td>${entry.level}</td><td>${entry.exp}</td><td>${entry.gold}</td>`;
+        leaderboardBody.appendChild(tr);
+      });
+    }
+
+    async function refreshActivity() {
+      const activityBody = document.getElementById("activity-body");
+      const { items } = await getActivity(50);
+      activityBody.innerHTML = "";
+      items.forEach((item) => {
+        const tr = document.createElement("tr");
+        const date = new Date(item.createdAt).toLocaleString();
+        const spSev = item.storyPoints != null ? `${item.storyPoints} SP` : (item.severity ?? "—");
+        const reward = item.expAwarded > 0 ? `+${item.expAwarded} EXP` : `+${item.goldAwarded} Oro`;
+        tr.innerHTML = `<td>${date}</td><td>${item.type}</td><td>${item.issueKey ?? "—"}</td><td>${item.summary ?? "—"}</td><td>${spSev}</td><td>${item.userId}</td><td>${reward}</td>`;
+        activityBody.appendChild(tr);
+      });
+    }
+
     async function refreshUsers() {
       const users = await getUsers();
       populateUserCheckboxes(users);
       usersListEl.innerHTML = "";
       users.forEach((u) => usersListEl.appendChild(renderUserEntry(u)));
+      refreshLeaderboard().catch(() => {});
+      refreshActivity().catch(() => {});
     }
 
     activeUserSelect.addEventListener("change", () => {
