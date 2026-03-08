@@ -8,6 +8,7 @@ import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 
 import { closePgPool } from "./infrastructure/db.pg.js";
+import { jiraConfig, validateJiraConfig } from "./config/jira.js";
 
 import { userRouter } from "./routes/user.js";
 import { tasksRouter } from "./routes/tasks.js";
@@ -22,6 +23,10 @@ import { jiraRouter } from "./routes/jira.js";
 // __dirname is not available in ES modules — reconstruct from import.meta.url
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+const { errors: jiraErrors, warnings: jiraWarnings } = validateJiraConfig(jiraConfig);
+jiraWarnings.forEach((w) => console.warn(`[jira config] ${w}`));
+jiraErrors.forEach((e) => console.error(`[jira config] ${e}`));
 
 const app = express();
 const PORT = process.env.PORT || 3000;

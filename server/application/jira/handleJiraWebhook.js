@@ -7,15 +7,33 @@ import { resolveRecipientUserIds } from "./resolveRecipientUserIds.js";
 import { awardTaskExpToUsers } from "../awardTaskExpToUsers.js";
 import { awardBugGoldToUsers } from "../awardBugGoldToUsers.js";
 
+// Local structured logger — console.warn for skipped events, console.log for normal flow.
+function logJiraWebhook(event, payload = {}) {
+  const line = JSON.stringify({ event, ...payload });
+  if (event === "skipped") console.warn("[jira webhook]", line);
+  else console.log("[jira webhook]", line);
+}
+
 // CC=4.
 export async function handleJiraWebhook(body, config, deps) {
+  const issueKey = body?.issue?.key ?? "unknown";
+  logJiraWebhook("received", { issueKey });
+
   const parsed = parseJiraDoneEvent(body, config);
-  if (!parsed) return { skipped: true, reason: "no_done_transition" };
+  if (!parsed) {
+    logJiraWebhook("skipped", { issueKey, reason: "no_done_transition" });
+    return { skipped: true, reason: "no_done_transition" };
+  }
 
   const { userIds, unmappedRecipients } = resolveRecipientUserIds(
     body, config.userMap, config.developersField, config.qaField
   );
-  if (userIds.length === 0) return { skipped: true, reason: "no_recipients", unmappedRecipients };
+  logJiraWebhook("recipients_resolved", { issueKey, type: parsed.type, userIds, unmappedRecipients });
+
+  if (userIds.length === 0) {
+    logJiraWebhook("skipped", { issueKey, reason: "no_recipients", unmappedRecipients });
+    return { skipped: true, reason: "no_recipients", unmappedRecipients };
+  }
 
   const meta = { issueKey: parsed.issueKey, summary: parsed.summary };
   const result = parsed.type === "TASK"
@@ -23,6 +41,13 @@ export async function handleJiraWebhook(body, config, deps) {
         { taskId: parsed.externalKey, storyPoints: parsed.payload.storyPoints, userIds, meta }, deps)
     : await awardBugGoldToUsers(
         { jiraKey: parsed.externalKey, severity: parsed.payload.severity, userIds, meta }, deps);
+
+  logJiraWebhook("rewarded", {
+    issueKey,
+    type: parsed.type,
+    externalKey: parsed.externalKey,
+    results: result.results.map((r) => ({ userId: r.userId, rewarded: r.rewarded, reason: r.reason ?? null })),
+  });
 
   return {
     event: result.event,

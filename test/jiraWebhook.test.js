@@ -240,4 +240,39 @@ describe("jiraWebhook", () => {
     expect(u1).toMatchObject({ rewarded: true, goldAwarded: 3 });
     expect(u2).toMatchObject({ rewarded: true, goldAwarded: 3 });
   });
+
+  it("transición no-Done → skipped con reason no_done_transition", async () => {
+    const body = makeTaskBody({ status: "In Progress" });
+    const result = await handleJiraWebhook(body, testConfig, deps);
+    expect(result).toEqual({ skipped: true, reason: "no_done_transition" });
+  });
+
+  it("changelog.id ausente → throws missing_changelog_id", async () => {
+    const body = {
+      issue: { key: "HU-1", fields: { issuetype: { name: "Story" }, customfield_10009: 3 } },
+      changelog: { items: [{ field: "status", fromString: "In Progress", toString: "Done" }] },
+    };
+    await expect(handleJiraWebhook(body, testConfig, deps))
+      .rejects.toMatchObject({ code: "missing_changelog_id" });
+  });
+
+  it("TASK sin story points → throws missing_sp", async () => {
+    const body = makeTaskBody({ storyPoints: null });
+    await expect(handleJiraWebhook(body, testConfig, deps))
+      .rejects.toMatchObject({ code: "missing_sp" });
+  });
+
+  it("BUG con severidad inválida → throws invalid_severity", async () => {
+    const config = { ...testConfig, severityField: "customfield_10800" };
+    const body = makeBugBody({ severity: "Unknown", severityField: "customfield_10800" });
+    await expect(handleJiraWebhook(body, config, deps))
+      .rejects.toMatchObject({ code: "invalid_severity" });
+  });
+
+  it("BUG sin severityField configurado → throws severity_field_not_configured", async () => {
+    // testConfig.severityField === "" — no severityField configured
+    const body = makeBugBody();
+    await expect(handleJiraWebhook(body, testConfig, deps))
+      .rejects.toMatchObject({ code: "severity_field_not_configured" });
+  });
 });
