@@ -11,6 +11,16 @@ function throwCode(code, message) {
   throw e;
 }
 
+// Maps Vibia priority names to the canonical severity values expected by goldForSeverity.
+// Fallback to raw value so English names (High, Critical…) pass through unchanged.
+const PRIORITY_MAP = {
+  "Crítica": "Critical",
+  "Alta":    "High",
+  "Media":   "Medium",
+  "Baja":    "Low",
+};
+function normalizePriority(name) { return PRIORITY_MAP[name] ?? name; }
+
 // Validates and returns SP as a positive finite number (decimals allowed). CC=4.
 function extractStoryPoints(fields, spField) {
   const sp = fields?.[spField];
@@ -20,20 +30,21 @@ function extractStoryPoints(fields, spField) {
   return sp;
 }
 
-// Validates severity and returns it; throws if field unconfigured or value unmappable. CC=3.
+// Validates severity and returns it; uses priority fallback when severityField is not configured. CC=3.
 function extractSeverity(fields, severityField) {
-  if (!severityField) throwCode("severity_field_not_configured", "JIRA_SEVERITY_FIELD is not configured");
-  const severity = fields?.[severityField];
+  const raw = severityField
+    ? fields?.[severityField]
+    : normalizePriority(fields?.priority?.name);
   try {
-    goldForSeverity(severity);
+    goldForSeverity(raw);
   } catch {
-    throwCode("invalid_severity", `Severity value "${severity}" is not mappable (expected: Low, Medium, High, Critical)`);
+    throwCode("invalid_severity", `Severity value "${raw}" is not mappable (expected: Low, Medium, High, Critical)`);
   }
-  return severity;
+  return raw;
 }
 
-// Main parser. CC=6.
-export function parseJiraDoneEvent(body, { doneName, spField, severityField }) {
+// Main parser. CC=7.
+export function parseJiraDoneEvent(body, { doneName, spField, severityField, bugIssueTypes, taskIssueTypes }) {
   const changelogId = body?.changelog?.id;
   if (!changelogId) throwCode("missing_changelog_id", "changelog.id is required for idempotency — webhook rejected");
 
@@ -45,9 +56,13 @@ export function parseJiraDoneEvent(body, { doneName, spField, severityField }) {
   if (!issueKey) throwCode("missing_issue_key", "issue.key is required");
 
   const fields = body?.issue?.fields ?? {};
-  const isBug = fields?.issuetype?.name === "Bug";
-  const externalKey = `${issueKey}-done-${changelogId}`;
+  const issueTypeName = fields?.issuetype?.name;
+  const isBug  = bugIssueTypes.has(issueTypeName);
+  const isTask = taskIssueTypes.has(issueTypeName);
+  if (!isBug && !isTask)
+    throwCode("unsupported_issuetype", `Issuetype "${issueTypeName}" is not in bugIssueTypes or taskIssueTypes — skipped`);
 
+  const externalKey = `${issueKey}-done-${changelogId}`;
   const summary = body?.issue?.fields?.summary ?? null;
 
   if (isBug) {

@@ -71,15 +71,17 @@ const testConfig = {
   developersField: "customfield_10819",
   qaField: "",
   userMap: { "jira-1": "u1" },
+  bugIssueTypes:  new Set(["Error", "Defecto"]),
+  taskIssueTypes: new Set(["Technical Story", "Historia", "Tarea"]),
 };
 
 // Helper: builds a minimal Jira issue_updated body for a TASK Done transition.
-function makeTaskBody({ changelogId = "ch-1", status = "Done", issueKey = "HU-1", storyPoints = 3, accountId = "jira-1", qaAccountId = null } = {}) {
+function makeTaskBody({ changelogId = "ch-1", status = "Done", issueKey = "HU-1", storyPoints = 3, accountId = "jira-1", qaAccountId = null, issueType = "Technical Story" } = {}) {
   return {
     issue: {
       key: issueKey,
       fields: {
-        issuetype: { name: "Story" },
+        issuetype: { name: issueType },
         customfield_10009: storyPoints,
         customfield_10819: [{ accountId }],
         ...(qaAccountId ? { customfield_10818: { accountId: qaAccountId } } : {}),
@@ -92,14 +94,15 @@ function makeTaskBody({ changelogId = "ch-1", status = "Done", issueKey = "HU-1"
   };
 }
 
-// Helper: builds a minimal Jira body for a BUG Done transition.
-function makeBugBody({ changelogId = "ch-bug-1", status = "Done", issueKey = "BUG-1", severity = "High", severityField = "customfield_10800", accountId = "jira-1", qaAccountId = null } = {}) {
+// Helper: builds a minimal Jira body for a BUG Done transition (priority-based severity).
+function makeBugBody({ changelogId = "ch-bug-1", status = "Done", issueKey = "BUG-1",
+  priorityName = "Alta", issueType = "Error", accountId = "jira-1", qaAccountId = null } = {}) {
   return {
     issue: {
       key: issueKey,
       fields: {
-        issuetype: { name: "Bug" },
-        [severityField]: severity,
+        issuetype: { name: issueType },
+        priority: { name: priorityName },
         customfield_10819: [{ accountId }],
         ...(qaAccountId ? { customfield_10818: { accountId: qaAccountId } } : {}),
       },
@@ -207,7 +210,7 @@ describe("jiraWebhook", () => {
       issue: {
         key: "HU-NO-PARTICIPANTS",
         fields: {
-          issuetype: { name: "Story" },
+          issuetype: { name: "Technical Story" },
           customfield_10009: 3,
           assignee: { accountId: "jira-1" }, // presente pero ya no contribuye
         },
@@ -223,20 +226,19 @@ describe("jiraWebhook", () => {
     expect(result.reason).toBe("no_recipients");
   });
 
-  it("BUG Done con developer + QA — ambos reciben oro", async () => {
+  it("BUG Done con developer + QA — ambos reciben oro (priority Alta → High = 3 gold)", async () => {
     const config = {
       ...testConfig,
-      severityField: "customfield_10800",
       qaField: "customfield_10818",
       userMap: { "jira-1": "u1", "jira-qa": "u2" },
     };
-    const body = makeBugBody({ changelogId: "ch-bug-qa", severity: "High", accountId: "jira-1", qaAccountId: "jira-qa" });
+    const body = makeBugBody({ changelogId: "ch-bug-qa", priorityName: "Alta", accountId: "jira-1", qaAccountId: "jira-qa" });
     const result = await handleJiraWebhook(body, config, deps);
 
     expect(result.recipientsResolved).toBe(2);
     const u1 = result.results.find((r) => r.userId === "u1");
     const u2 = result.results.find((r) => r.userId === "u2");
-    // High severity = 3 gold
+    // Alta → High → 3 gold
     expect(u1).toMatchObject({ rewarded: true, goldAwarded: 3 });
     expect(u2).toMatchObject({ rewarded: true, goldAwarded: 3 });
   });
@@ -249,7 +251,7 @@ describe("jiraWebhook", () => {
 
   it("changelog.id ausente → throws missing_changelog_id", async () => {
     const body = {
-      issue: { key: "HU-1", fields: { issuetype: { name: "Story" }, customfield_10009: 3 } },
+      issue: { key: "HU-1", fields: { issuetype: { name: "Technical Story" }, customfield_10009: 3 } },
       changelog: { items: [{ field: "status", fromString: "In Progress", toString: "Done" }] },
     };
     await expect(handleJiraWebhook(body, testConfig, deps))
@@ -262,17 +264,50 @@ describe("jiraWebhook", () => {
       .rejects.toMatchObject({ code: "missing_sp" });
   });
 
-  it("BUG con severidad inválida → throws invalid_severity", async () => {
-    const config = { ...testConfig, severityField: "customfield_10800" };
-    const body = makeBugBody({ severity: "Unknown", severityField: "customfield_10800" });
-    await expect(handleJiraWebhook(body, config, deps))
+  it("BUG con priority desconocida → throws invalid_severity", async () => {
+    const body = makeBugBody({ priorityName: "Desconocida" });
+    await expect(handleJiraWebhook(body, testConfig, deps))
       .rejects.toMatchObject({ code: "invalid_severity" });
   });
 
-  it("BUG sin severityField configurado → throws severity_field_not_configured", async () => {
-    // testConfig.severityField === "" — no severityField configured
-    const body = makeBugBody();
-    await expect(handleJiraWebhook(body, testConfig, deps))
-      .rejects.toMatchObject({ code: "severity_field_not_configured" });
+  it("BUG tipo Error con priority Crítica → rewarded (gold = 5)", async () => {
+    const body = makeBugBody({ changelogId: "ch-critica", issueType: "Error", priorityName: "Crítica" });
+    const result = await handleJiraWebhook(body, testConfig, deps);
+    expect(result.results[0]).toMatchObject({ userId: "u1", rewarded: true, goldAwarded: 5 });
+  });
+
+  it("BUG tipo Defecto con priority Media → rewarded (gold = 2)", async () => {
+    const body = makeBugBody({ changelogId: "ch-defecto", issueType: "Defecto", priorityName: "Media" });
+    const result = await handleJiraWebhook(body, testConfig, deps);
+    expect(result.results[0]).toMatchObject({ userId: "u1", rewarded: true, goldAwarded: 2 });
+  });
+
+  it("TASK tipo Historia → rewarded with EXP", async () => {
+    const body = makeTaskBody({ changelogId: "ch-historia", issueType: "Historia", storyPoints: 2 });
+    const result = await handleJiraWebhook(body, testConfig, deps);
+    expect(result.results[0]).toMatchObject({ userId: "u1", rewarded: true });
+    // 2 EXP: L1→L2 (cost 1) → L2 con 1 EXP restante, no llega a L3 (cost 2)
+    expect(result.results[0].newLevel).toBe(2);
+  });
+
+  it("issuetype no reconocido (Epic) → skipped con reason unsupported_issuetype", async () => {
+    const body = {
+      issue: {
+        key: "EP-1",
+        fields: {
+          issuetype: { name: "Epic" },
+          customfield_10009: 5,
+          customfield_10819: [{ accountId: "jira-1" }],
+        },
+      },
+      changelog: {
+        id: "ch-epic",
+        items: [{ field: "status", fromString: "In Progress", toString: "Done" }],
+      },
+    };
+    const result = await handleJiraWebhook(body, testConfig, deps);
+    expect(result.skipped).toBe(true);
+    expect(result.reason).toBe("unsupported_issuetype");
+    expect(result.reason).not.toBe("no_done_transition");
   });
 });

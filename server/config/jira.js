@@ -10,6 +10,10 @@ function parseUserMap(json) {
   }
 }
 
+function parseIssueTypeSet(csv) {
+  return new Set(csv.split(",").map((s) => s.trim()).filter(Boolean));
+}
+
 // Pure validation function — testable without DB or ENV.
 export function isValidWebhookSecret(headerValue, configuredSecret) {
   return Boolean(configuredSecret) && headerValue === configuredSecret;
@@ -36,4 +40,6 @@ export const jiraConfig = {
   developersField: process.env.JIRA_DEVELOPERS_FIELD ?? "customfield_10819",
   qaField:         process.env.JIRA_QA_FIELD ?? "",
   userMap:         parseUserMap(process.env.USER_MAP_JSON),
+  bugIssueTypes:   parseIssueTypeSet(process.env.JIRA_BUG_ISSUE_TYPES  ?? "Error,Defecto"),
+  taskIssueTypes:  parseIssueTypeSet(process.env.JIRA_TASK_ISSUE_TYPES ?? "Technical Story,Historia,Tarea"),
 };

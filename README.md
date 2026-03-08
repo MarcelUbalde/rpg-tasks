@@ -43,6 +43,9 @@ Abrir http://localhost:3000 en el navegador.
 | `JIRA_SP_FIELD` | `customfield_10009` | Campo Jira de Story Points |
 | `JIRA_SEVERITY_FIELD` | _(vacio)_ | Campo Jira de severidad (solo para bugs) |
 | `JIRA_DEVELOPERS_FIELD` | `customfield_10819` | Campo Jira con los desarrolladores asignados |
+| `JIRA_QA_FIELD` | _(vacio)_ | Campo Jira con el QA asignado (user picker simple) |
+| `JIRA_BUG_ISSUE_TYPES` | `Error,Defecto` | Issuetypes que se tratan como bug (otorgan oro). Separados por coma. |
+| `JIRA_TASK_ISSUE_TYPES` | `Technical Story,Historia,Tarea` | Issuetypes que se tratan como tarea (otorgan EXP). El resto se ignora. |
 | `USER_MAP_JSON` | `{}` | JSON que mapea Jira accountId a RPG userId |
 
 Ejemplo de `USER_MAP_JSON`:
@@ -186,9 +189,10 @@ El webhook procesa transiciones al estado configurado en `JIRA_DONE_STATUS_NAME`
 La clave de idempotencia es `{issueKey}-done-{changelog.id}`, lo que permite reintentos seguros.
 
 **Resolucion de destinatarios:**
-1. Si el campo `JIRA_DEVELOPERS_FIELD` contiene usuarios, se usan todos.
-2. Si no, se usa el `assignee`.
-3. Los Jira accountIds se traducen a RPG userIds via `USER_MAP_JSON`. Los no mapeados se reportan en `unmappedRecipients`.
+1. Se extraen los usuarios del campo `JIRA_DEVELOPERS_FIELD` (array de usuarios).
+2. Si `JIRA_QA_FIELD` esta configurado, se añade ese usuario tambien.
+3. Se deduplican accountIds antes de mapear.
+4. Los Jira accountIds se traducen a RPG userIds via `USER_MAP_JSON`. Los no mapeados se reportan en `unmappedRecipients`.
 
 **Codigos de error:**
 
@@ -200,6 +204,48 @@ La clave de idempotencia es `{issueKey}-done-{changelog.id}`, lo que permite rei
 | 400 | `invalid_severity` | Severidad no mapeada |
 | 400 | `severity_field_not_configured` | `JIRA_SEVERITY_FIELD` no configurado |
 | 409 | `payload_mismatch` | La clave ya existe con un payload diferente (SP o severidad cambiados) |
+
+### Configuracion para Vibia
+
+Los custom fields de Jira **no son universales** — cada instancia tiene IDs distintos.
+Los siguientes valores estan confirmados para la instancia de Vibia a partir de la issue DV-6064.
+La aplicacion sigue siendo configurable por variables de entorno para cualquier otra instancia.
+
+#### Campos confirmados
+
+| Variable | Valor confirmado | Notas |
+|---|---|---|
+| `JIRA_DONE_STATUS_NAME` | `Finalizada` | Nombre exacto del estado Done en Vibia (`statusCategory.key = "done"`) |
+| `JIRA_SP_FIELD` | `customfield_10009` | Story Points; coincide con el valor por defecto del codigo |
+| `JIRA_DEVELOPERS_FIELD` | `customfield_10819` | Array de usuarios; coincide con el valor por defecto del codigo |
+| `JIRA_QA_FIELD` | `customfield_10818` | User picker simple (QA Analyst) |
+| `JIRA_BUG_ISSUE_TYPES` | `Error,Defecto` | Issuetypes de bug en Vibia |
+| `JIRA_TASK_ISSUE_TYPES` | `Technical Story,Historia,Tarea` | Issuetypes de tarea en Vibia |
+
+#### Comportamiento de bugs en Vibia
+
+En Vibia **no existe un campo de severidad separado**. La severidad funcional proviene de `fields.priority.name`. El codigo normaliza nombres en español al formato canonico ingles que usa `BugReward.js`.
+
+| Aspecto | Valor en Vibia |
+|---|---|
+| Issuetypes de bug | `"Error"`, `"Defecto"` |
+| Campo de severidad funcional | `fields.priority.name` |
+| Ejemplo real | `priority.name = "Critica"` → `Critical` → 5 oro |
+
+> Issuetypes no incluidos en ninguna de las dos listas (Epic, Test, Test Set, etc.) se ignoran sin otorgar recompensas (`reason: "unsupported_issuetype"`).
+
+#### Ejemplo de USER_MAP_JSON para Vibia (entorno de desarrollo)
+
+```json
+{
+  "712020:eb206518-3f3b-4297-87a8-d2ab988baf23": "u1",
+  "712020:12a1eecc-1308-4946-b4e0-b2a7e1c905a0": "u2",
+  "712020:8a73806b-493b-49c8-a003-5a9af5d4c4c2": "u3"
+}
+```
+
+Este mapeo es un ejemplo local (Marcel→u1, Alejandro→u2, Luis Enrique→u3).
+En produccion, los userId deben corresponder a los usuarios reales en la base de datos RPG.
 
 ## Base de datos
 

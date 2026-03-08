@@ -19,7 +19,16 @@ export async function handleJiraWebhook(body, config, deps) {
   const issueKey = body?.issue?.key ?? "unknown";
   logJiraWebhook("received", { issueKey });
 
-  const parsed = parseJiraDoneEvent(body, config);
+  let parsed;
+  try {
+    parsed = parseJiraDoneEvent(body, config);
+  } catch (e) {
+    if (e.code === "unsupported_issuetype") {
+      logJiraWebhook("skipped", { issueKey, reason: "unsupported_issuetype", issueType: body?.issue?.fields?.issuetype?.name });
+      return { skipped: true, reason: "unsupported_issuetype" };
+    }
+    throw e;
+  }
   if (!parsed) {
     logJiraWebhook("skipped", { issueKey, reason: "no_done_transition" });
     return { skipped: true, reason: "no_done_transition" };
